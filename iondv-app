@@ -1,22 +1,28 @@
 #!/bin/bash
 
-gitFramework=https://git.iondv.ru/ION/platform.git
-gitModules=https://git.iondv.ru/ION-MODULES
-gitApp=https://git.iondv.ru/ION-APP
-gitAppExt=https://git.iondv.ru/ION-METADATA
-
 
 if ! [ $1 ] ; then
   echo 'Usage: iondv-app [OPTION]... IONDV_APP_NAME'
-  echo 'Install IONDV. Framework application to current dirrectory.'
+  echo 'Install IONDV. Framework application to current dirrectory and create docker image.'
   echo
   echo 'Options:'
   echo '  -d                          stop, remove runnig app docker container and image,'
   echo '                              create and run new once'
+  echo '  -l [value]                  mongodb docker name, for link with app docker container'
+  echo '                              (also set mongo uri value to [value]:27017)'
   echo '  -k                          skip check'
-  echo '  -s                          script to run after install and before build app'
+  echo '  -s [value]                  script to run after install and before build app'
+  echo '  -m [value]                  mongo uri, for example: mongodb:27017. Default localhost:27017'
   exit
 fi
+
+#Default value
+mongodbUri="localhost:27017"
+
+gitFramework=https://git.iondv.ru/ION/platform.git
+gitModules=https://git.iondv.ru/ION-MODULES
+gitApp=https://git.iondv.ru/ION-APP
+gitAppExt=https://git.iondv.ru/ION-METADATA
 
 # Process param
 while [ -n "$1" ]
@@ -24,6 +30,10 @@ do
 case "$1" in
   -d) dockerUse=1; echo "Found the docker option";;
   -k) skipCheck=1; echo "Found the skip check option";;
+  -l) mongoLink="$2"; echo "Found the docker mongo link option"
+  shift ;;
+  -m) mongodbUri="$2"; echo "Found the mongodb option"
+  shift ;;
   -s) postInstScript="$2"; echo "Found the script option"
   shift ;;
   *) if [[ ${1:0:1} == "-" ]] ; then 
@@ -36,7 +46,9 @@ case "$1" in
 shift
 done
 
-mongodbUri="mongodb:27017" # TODO в параметр
+if [ $mongoLink ] ; then
+  mongodbUri="$mongoLink:27017"
+fi
 
 # Check
 if ! [ $skipCheck ] ; then 
@@ -48,10 +60,17 @@ if ! [ $skipCheck ] ; then
     exit
   fi
   # Check mongonpm -g list node-gyp gulp bower
-  checkMongo=`curl --silent $mongodbUri | grep "MongoDB"` > /dev/null
-  if [ $? -ne 0 ]; then
-    echo "Error check MongoDb"
-    exit
+  if [ $mongoLink ] ; then
+    docker exec -it $mongoLink mongo --quiet --eval 'db.runCommand("ping").ok' > /dev/null
+    if [ $? -ne 0 ]; then
+      echo "Error check MongoDb docker container: $mongoLink"
+      exit
+    fi
+  else
+    checkMongo=`curl --silent $mongodbUri | grep "MongoDB"` > /dev/null
+    if [ $? -ne 0 ]; then
+      echo "Error check MongoDb: $mongodbUri"
+    fi
   fi
   # Check npm
   #  TODO Проверка установки -g node-gyp, gulp
@@ -115,7 +134,7 @@ if [ $postInstScript ] ; then echo "  postinstall script:   $postInstScript"; fi
 
 if ! [ -d $frameworkPath ]; then
   echo "Git: clone IONDV. framework"
-  git clone "$gitFramework $appName"
+  git clone --quiet "$gitFramework" "$appName"
 else
   cd $frameworkPath
   echo "Git: Stash and update IONDV. framework"
@@ -136,7 +155,7 @@ if [ -d "$frameworkPath/applications/$appName" ]; then
 else
   cd "$frameworkPath/applications"
   echo "Git: clone IONDV. app - $appName"
-  git clone "$gitApp/$appName.git"
+  git clone --quiet "$gitApp/$appName.git" 
   imageVer=`grep "version" $frameworkPath/applications/$appName/package.json | sed 's/"version\"://' | sed 's/"//g' | sed 's/,//g' | sed 's/ //g'`
   echo "Current app version: $imageVer"
 fi
@@ -151,14 +170,13 @@ if [ $dockerUse ] ; then
       docker rm $dockerName
       docker image rmi $imageName:latest
       docker image rmi $imageName:$imageVer
-      docker exec -it mongodb mongo $dbName --eval "db.dropDatabase();";;
+      docker exec -it $mongoLink mongo $dbName --quiet --eval "db.dropDatabase();";;
     n|N );;
     * ) echo "invalid";;
   esac
 fi
 
-
-# Зависимости из package.json
+# package.json dependencies 
 apps=`sed -n -r '/"ionMetaDependencies":\s+\{/,/\}/{ /"ionMetaDependencies":\s+\{/d; /}/d; p; }' $frameworkPath/applications/$appName/package.json`
 if ! [ ${#apps[@]} = 0 ] ; then 
   echo Addition apps list: $apps
@@ -170,7 +188,7 @@ if ! [ ${#apps[@]} = 0 ] ; then
     IFS=':' tmp=($i)
     if ! [ -d "$frameworkPath/applications/${tmp[0]}" ]; then
       cd $frameworkPath/applications
-      git clone "$gitAppExt/${tmp[0]}.git"
+      git clone --quiet "$gitAppExt/${tmp[0]}.git"
     fi
     cd "$frameworkPath/applications/${tmp[0]}"
     git stash
@@ -196,7 +214,7 @@ if ! [ ${#modules[@]} = 0 ] ; then
       cd $frameworkPath/modules
       echo `pwd`
       echo $gitModules/${tmp[0]}.git
-      git clone "$gitModules/${tmp[0]}.git"
+      git clone --quiet "$gitModules/${tmp[0]}.git"
     fi
     cd "$frameworkPath/modules/${tmp[0]}"
     git stash
@@ -269,7 +287,7 @@ echo 'Install npm production'
 npm ci --only=production
 
 
-if ! [$dockerUse = 1] ; then
+if ! [ $dockerUse ] ; then
   node bin/import --src ./applications/$appName --ns $appName
   node bin/setup $appName --reset
   node bin/import-data --src ./applications/$appName/data --ns $appName
@@ -284,13 +302,16 @@ else
   docker image build -t $imageName:$imageVer .
   cd ..
   docker tag $imageName:$imageVer $imageName:latest
-  # TODO для докера нужен какой-то проброс портов на host. И параметр - запускать или нет.
-  docker run -d -p 80:8888 --name $dockerName $imageName #--link mongodb 
+
+  if [ $mongoLink ] ; then
+    docker run -d -p 8888:8888 --name $dockerName --link $mongoLink $imageName
+  else   # TODO для докера нужен какой-то проброс портов на host. И параметр - запускать или нет.
+    docker run -d -p 80:8888 --name $dockerName $imageName 
+  fi
   sleep 30
-  curl localhost # TODO проверка результата
-  echo " be drop db: $dbName"
+  curl localhost:8888 # TODO проверка результата
   read -p "Save docker container to file (y/n)?" choice
-  case "$choice" in 
+  case "$choice" in
     y|Y ) 
       docker save $imageName:latest -o $dockerName.docker-image.tar;;
     n|N );;
