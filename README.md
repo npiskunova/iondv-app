@@ -16,3 +16,9 @@ Options:'
   -s [value]                  script to run after install and before build app
   -m [value]                  mongo uri, for example: mongodb:27017. Default localhost:27017
 ```
+
+Example. Install and start app `khv-ticket-discount` with link docker mongodb
+
+```
+./iondv-app -d -l mongodb khv-ticket-discount
+```
