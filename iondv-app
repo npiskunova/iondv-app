@@ -2,7 +2,7 @@
 
 
 if ! [ $1 ] ; then
-  echo 'Usage: iondv-app [OPTION]... IONDV_APP_NAME'
+  echo 'Usage: iondv-app [OPTION]... IONDV_APP_NAME_OR_GIT_URL'
   echo 'Install IONDV. Framework application to current dirrectory and create docker image.'
   echo
   echo 'Options:'
@@ -13,8 +13,13 @@ if ! [ $1 ] ; then
   echo '  -k                          skip check'
   echo '  -s [value]                  script to run after install and before build app'
   echo '  -m [value]                  mongo uri, for example: mongodb:27017. Default localhost:27017'
+  echo
+  echo 'Example:'
+  echo '  ./iondv-app -d -l mongodb khs-ticket-dicsount'
+  echo '  ./iondv-app -m localhost:27017 https://git.iondv.ru/ION-METADATA/khv-svyaz-info.git'
   exit
 fi
+
 
 #Default value
 mongodbUri="localhost:27017"
@@ -37,7 +42,7 @@ case "$1" in
   -s) postInstScript="$2"; echo "Found the script option"
   shift ;;
   *) if [[ ${1:0:1} == "-" ]] ; then 
-    echo "$1 is not an option"  # TODO По идее здесь можно обрабатываться параметры, проверяя что у них нет - или --
+    echo "$1 is not an option" 
     shift
   else 
     appName="$1"
@@ -46,8 +51,15 @@ case "$1" in
 shift
 done
 
+checkUrl=`echo $appName  | grep "^http"`
+if [ $? -eq 0 ]; then
+  appGitLink=$appName
+  appName=`echo $appName | grep -Po "[\-\w]+\.git" | sed 's/.git//'`
+fi
+
 if [ $mongoLink ] ; then
   mongodbUri="$mongoLink:27017"
+  echo "Set mongo uri to $mongodbUri"
 fi
 
 # Check
@@ -155,7 +167,11 @@ if [ -d "$frameworkPath/applications/$appName" ]; then
 else
   cd "$frameworkPath/applications"
   echo "Git: clone IONDV. app - $appName"
-  git clone --quiet "$gitApp/$appName.git" 
+  if [ $appGitLink ] ; then
+    git clone --quiet "$appGitLink"
+  else
+    git clone --quiet "$gitApp/$appName.git" 
+  fi
   imageVer=`grep "version" $frameworkPath/applications/$appName/package.json | sed 's/"version\"://' | sed 's/"//g' | sed 's/,//g' | sed 's/ //g'`
   echo "Current app version: $imageVer"
 fi
@@ -177,50 +193,63 @@ if [ $dockerUse ] ; then
 fi
 
 # package.json dependencies 
-apps=`sed -n -r '/"ionMetaDependencies":\s+\{/,/\}/{ /"ionMetaDependencies":\s+\{/d; /}/d; p; }' $frameworkPath/applications/$appName/package.json`
-if ! [ ${#apps[@]} = 0 ] ; then 
-  echo Addition apps list: $apps
-  applist=`echo $modules | tr -d [:space:] | tr -d '"' | tr ',' '\n'`
-
-  for i in ${applist[@]}
-  do
-    echo "Inslall ext-app: $i"
-    IFS=':' tmp=($i)
-    if ! [ -d "$frameworkPath/applications/${tmp[0]}" ]; then
-      cd $frameworkPath/applications
-      git clone --quiet "$gitAppExt/${tmp[0]}.git"
-    fi
-    cd "$frameworkPath/applications/${tmp[0]}"
-    git stash
-    git pull
-    git checkout tags/${tmp[1]}
-  done
+# Check empty ionMetaDependencies
+grep '"ionMetaDependencies"\s*:\s*{' $frameworkPath/applications/$appName/package.json > /dev/null
+if [ $? -eq 0 ]; then 
+grep '"ionMetaDependencies"\s*:\s*{[\s\n]*}' $frameworkPath/applications/$appName/package.json > /dev/null
 fi
+if [ $? -ne 0 ]; then
+  apps=`sed -n -r '/"ionMetaDependencies":\s+\{/,/\}/{ /"ionMetaDependencies":\s+\{/d; /}/d; p; }' $frameworkPath/applications/$appName/package.json`
+  if ! [ ${#apps[@]} = 0 ] ; then 
+    echo Addition apps list: $apps
+    applist=`echo $apps | tr -d [:space:] | tr -d '"' | tr ',' '\n'`
 
+    for i in ${applist[@]}
+    do
+      echo "Inslall ext-app: $i"
+      IFS=':' tmp=($i)
+      if ! [ -d "$frameworkPath/applications/${tmp[0]}" ]; then
+        cd $frameworkPath/applications
+        git clone --quiet "$gitAppExt/${tmp[0]}.git"
+      fi
+      cd "$frameworkPath/applications/${tmp[0]}"
+      git stash
+      git pull
+      git checkout tags/${tmp[1]}
+    done
+  fi
+fi
 
 if ! [ -d $frameworkPath/modules ]; then 
   mkdir $frameworkPath/modules 
 fi
 
-modules=`sed -n -r '/"ionModulesDependencies":\s+\{/,/\}/{ /"ionModulesDependencies":\s+\{/d; /}/d; p; }' $frameworkPath/applications/$appName/package.json`
-echo Modules list: $modules
-if ! [ ${#modules[@]} = 0 ] ; then
-  modlist=`echo $modules | tr -d [:space:] | tr -d '"' | tr ',' '\n'`
-  for i in ${modlist[@]}
-  do
-    echo "Inslall module: $i"
-    IFS=':' tmp=($i)
-    if ! [ -d "$frameworkPath/modules/${tmp[0]}" ]; then
-      cd $frameworkPath/modules
-      echo `pwd`
-      echo $gitModules/${tmp[0]}.git
-      git clone --quiet "$gitModules/${tmp[0]}.git"
-    fi
-    cd "$frameworkPath/modules/${tmp[0]}"
-    git stash
-    git pull
-    git checkout tags/${tmp[1]}
-  done
+# Check empty ionModulesDependencies
+grep '"ionModulesDependencies"\s*:\s*{' $frameworkPath/applications/$appName/package.json > /dev/null
+if [ $? -eq 0 ]; then 
+grep '"ionModulesDependencies"\s*:\s*{[\s\n]*}' $frameworkPath/applications/$appName/package.json > /dev/null
+fi
+if [ $? -ne 0 ]; then
+  modules=`sed -n -r '/"ionModulesDependencies":\s+\{/,/\}/{ /"ionModulesDependencies":\s+\{/d; /}/d; p; }' $frameworkPath/applications/$appName/package.json`
+  echo Modules list: $modules
+  if ! [ ${#modules[@]} = 0 ] ; then
+    modlist=`echo $modules | tr -d [:space:] | tr -d '"' | tr ',' '\n'`
+    for i in ${modlist[@]}
+    do
+      echo "Inslall module: $i"
+      IFS=':' tmp=($i)
+      if ! [ -d "$frameworkPath/modules/${tmp[0]}" ]; then
+        cd $frameworkPath/modules
+        echo `pwd`
+        echo $gitModules/${tmp[0]}.git
+        git clone --quiet "$gitModules/${tmp[0]}.git"
+      fi
+      cd "$frameworkPath/modules/${tmp[0]}"
+      git stash
+      git pull
+      git checkout tags/${tmp[1]}
+    done
+  fi
 fi
 
 echo Build IONDV application: $appName

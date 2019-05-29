@@ -4,7 +4,7 @@ IONDV. Framework apps installer
 
 Usage: 
 ```
-iondv-app [OPTION]... IONDV_APP_NAME'
+iondv-app [OPTION]... IONDV_APP_NAME_OR_GIT_URL'
  Install IONDV. Framework application to current dirrectory and create docker image.
 
 Options:'
@@ -21,4 +21,9 @@ Example. Install and start app `khv-ticket-discount` with link docker mongodb
 
 ```
 ./iondv-app -d -l mongodb khv-ticket-discount
+```
+
+Example: Install app with link to git and mongo uri'
+```
+./iondv-app -m localhost:27017 https://git.iondv.ru/ION-METADATA/khv-svyaz-info.git'
 ```
