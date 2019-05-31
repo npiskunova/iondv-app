@@ -6,7 +6,7 @@
 # TODO skip checkout - default
 # TODO method git, zip, npm
 # TODO check local node version and set docker node ver
-# TODO clean - remove current folder
+# +TODO clean - remove current folder
 # +TODO quiet - show only basic info
 
 if ! [ $1 ] ; then
@@ -16,6 +16,7 @@ if ! [ $1 ] ; then
   echo 'Options:'
   echo '  -d                          stop, remove runnig app docker container and image,'
   echo '                              create and run new once'
+  echo '  -r                          remove app folder, if they exist'
   echo '  -i                          import data'
   echo '  -k                          skip check'
   echo '  -q                          quiet mode. Show only major and warn information'
@@ -49,6 +50,7 @@ while [ -n "$1" ]
 do
 case "$1" in
   -d) dockerUse=1; paramInfo="$paramInfo\nFound the docker option";;
+  -r) removeAppFolder=1; paramInfo="$paramInfo\nFound the remove current app folder option";;
   -k) skipCheck=1; paramInfo="$paramInfo\nFound the skip check option";;
   -i) importData=1; paramInfo="$paramInfo\nFound the import data option";;
   -q) quietMode=1; paramInfo="$paramInfo\nFound the quiet data option";;
@@ -75,7 +77,6 @@ if ! [ $quietMode ] ; then
   echo "App base URL: $IONDVUrlGitApp"
   echo "ExtApp base URL: $IONDVUrlGitExtApp"
 fi
-exit
 
 
 checkUrl=`echo $appName  | grep "^http"`
@@ -164,6 +165,11 @@ dbName=$appName
 installDir=`pwd`
 
 frameworkPath=$installDir/$dockerName
+
+if [ $removeAppFolder ] ; then
+  rm -r -f $frameworkPath
+fi
+
 
 if ! [ $quietMode ] ; then 
   echo "Insalling app:          $appName"
@@ -348,7 +354,7 @@ if [ $? -ne 0 ]; then
   exit
 fi
 
-rm -r -f node_modules
+rm -r -f ./node_modules
 
 if ! [ $quietMode ] ; then echo 'Install npm production'; fi
 npm ci --only=production
