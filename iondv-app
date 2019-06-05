@@ -1,4 +1,5 @@
 #!/bin/bash
+
 # +TODO clean - remove current folder
 # +TODO quiet - show only basic info
 # +TODO set git path from enveronment
@@ -6,13 +7,15 @@
 # +TODO start cluster
 # +TODO -y option: all yes
 # +TODO bugfix import data
+# +TODO CHECKOUT iondv engine
 
-# TODO CHECKOUT iondv engine
 # TODO change appName and namespace in all metadata
 # TODO skip checkout - and also TODO set to default branch before
 # TODO method git, zip, npm
 # TODO Build in docker only, without use local Node.js
 # TODO Checkout to app version (if not start http)
+# TODO Simple get version with regexp in grep
+# TODO Check appName in param
 
 if ! [ $1 ] ; then
   echo 'Usage: iondv-app [OPTION]... IONDV_APP_NAME_OR_GIT_URL'
@@ -29,8 +32,10 @@ if ! [ $1 ] ; then
   echo '  -q                          quiet mode. Show only major and warn information'
   echo '  -l [value]                  mongodb docker name, for link with app docker container'
   echo '                              (also set mongo uri value to [value]:27017)'
+  echo '  -p [value]                  workspace path, where will created app folder'
   echo '  -s [value]                  script to run after install and before build app'
   echo '  -m [value]                  mongo uri, for example: mongodb:27017. Default localhost:27017'
+  echo '  -n [value]                  new app namespace and name'
   echo
   echo 'Environment:'
   echo '  IONDVUrlGitFramework       URL for get framework, default: https://github.com/iondv/framework.git'
@@ -46,6 +51,8 @@ fi
 
 
 # Process param
+scriptPath=`echo $0 | sed 's/\/iondv-app//'`
+
 while [ -n "$1" ]
 do
 case "$1" in
@@ -61,14 +68,18 @@ case "$1" in
   shift ;;
   -m) mongodbUri="$2"; paramInfo="$paramInfo\nFound the mongodb option"
   shift ;;
+  -n) newAppName="$2"; paramInfo="$paramInfo\nFound the new app name option"
+  shift ;;
+  -p) installDir="$2"; paramInfo="$paramInfo\nFound the path option"
+  shift ;;
   -s) postInstScript="$2"; paramInfo="$paramInfo\nFound the script option"
   shift ;;
-  *) if [[ ${1:0:1} == "-" ]] ; then 
-    echo "$1 is not an option" 
-    shift
-  else 
-    appName="$1"
-  fi;;
+  *)  if [[ ${1:0:1} == "-" ]] ; then 
+        echo "$1 is not an option" 
+        shift
+      else 
+        appName="$1"
+      fi;;
   esac
 shift
 done
@@ -89,11 +100,18 @@ if ! [ $quietMode ] ; then
   echo "ExtApp base URL: $IONDVUrlGitExtApp"
 fi
 
-
 checkUrl=`echo $appName  | grep "^http"`
 if [ $? -eq 0 ]; then
   appGitLink=$appName
   appName=`echo $appName | grep -Po "[\-\w]+\.git" | sed 's/.git//'`
+else
+  appGitLink=$IONDVUrlGitApp/$appName.git
+fi
+
+if [ $newAppName ] ; then
+  appGitLink=$IONDVUrlGitApp/$appName.git
+  prevAppName=$appName
+  appName=$newAppName
 fi
 
 if [ $mongoLink ] ; then
@@ -179,13 +197,16 @@ else
   fi
 fi
 
-
+startDir=`pwd`
 dockerName=$appName
 imageName=$dockerName
 dbName=$appName
-installDir=`pwd`
+if ! [ $installDir ] ; then
+  echo 'Use current dir for workspace'
+  installDir=$startDir
+fi
+frameworkPath=$installDir/$appName
 
-frameworkPath=$installDir/$dockerName
 
 if [ $removeAppFolder ] ; then
   echo "Remove $frameworkPath"
@@ -200,6 +221,8 @@ if ! [ $quietMode ] ; then
   if [ $dockerUse ] ; then echo "  create docker image:  $imageName"; echo "  run docker name:      $dockerName"; fi
   if [ $postInstScript ] ; then echo "  postinstall script:   $postInstScript"; fi
 fi
+
+cd $installDir
 
 if ! [ -d $frameworkPath ]; then
   if ! [ $quietMode ] ; then echo "Git: clone IONDV. framework"; fi
@@ -217,28 +240,26 @@ if ! [ -d "$frameworkPath/applications" ]; then
 fi
 
 if [ -d "$frameworkPath/applications/$appName" ]; then
-  imageVer=`grep "version" $frameworkPath/applications/$appName/package.json | sed 's/"version\"://' | sed 's/"//g' | sed 's/,//g' | sed 's/ //g'`
-  if ! [ $quietMode ] ; then 
-    echo "Current app version: $imageVer"
-    echo "Git: stash and update IONDV. app - $appName"
-  fi
+  appVer=`grep "version" $frameworkPath/applications/$appName/package.json | sed 's/"version\"://' | sed 's/"//g' | sed 's/,//g' | sed 's/ //g'`
+  if ! [ $quietMode ] ; then echo "Current app version: $appVer"; echo "Git: stash and update IONDV. app - $appName"; fi
   git stash
   git pull
 else
   cd "$frameworkPath/applications"
-  if ! [ $quietMode ] ; then echo "Git: clone IONDV. app - $appName"; fi
-  if [ $appGitLink ] ; then
-    git clone --quiet "$appGitLink"
-    if [ $? -ne 0 ]; then echo "Didn't clone $appGitLink"; exit; fi
-  else
-    git clone --quiet "$IONDVUrlGitApp/$appName.git" 
-    if [ $? -ne 0 ]; then echo "Didn't clone $IONDVUrlGitApp/$appName.git"; exit; fi
-  fi
-  imageVer=`grep "version" $frameworkPath/applications/$appName/package.json | sed 's/"version\"://' | sed 's/"//g' | sed 's/,//g' | sed 's/ //g'`
-  if ! [ $quietMode ] ; then echo "Current app version: $imageVer"; fi
+  if ! [ $quietMode ] ; then echo "Git: clone IONDV. app - $appName from $appGitLink"; fi
+  git clone --quiet "$appGitLink"
+  if [ $? -ne 0 ]; then echo "Didn't clone $appGitLink"; exit; fi
+  appVer=`grep "version" $frameworkPath/applications/$appName/package.json | sed 's/"version\"://' | sed 's/"//g' | sed 's/,//g' | sed 's/ //g'`
+  if ! [ $quietMode ] ; then echo "Current app version: $appVer"; fi
 fi
 
-# TODO CHECKOUT iondv engine
+# Change app name and namespace
+if [ $newAppName ] ; then
+  cd $startDir
+  $scriptPath/change-namespace.sh "$frameworkPath/applications/$appName" $prevAppName $newAppName
+fi
+exit
+
 
 if [ $dockerUse ] ; then  
   echo "Will be stop container and remove $dockerName, remove docker image: $imageName:latest and $imageName:$imageVer"
@@ -458,4 +479,4 @@ else
   esac
 fi
 
-cd $installDir
+cd $startDir
