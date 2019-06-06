@@ -84,6 +84,12 @@ case "$1" in
 shift
 done
 
+$appName
+if ! [ $appName ] ; then 
+  echo "Didn't set application name or git url"
+  exit
+fi
+
 #Default value
 if ! [ $mongodbUri ] ; then  mongodbUri="localhost:27017"; fi
 if ! [ $IONDVUrlGitFramework ] ; then IONDVUrlGitFramework=https://github.com/iondv/framework.git; fi

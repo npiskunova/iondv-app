@@ -35,8 +35,8 @@ function checkPrevNsAndRenameFile {
   mv -f "$prepareFile-$curDate" $prepareFile
 }
 
-filecount=0
-filePrepare=0
+fileCount=0
+filePrepareCount=0
 appFolders=("meta" "navigation" "geo/layers" "geo/navigation")
 
 
@@ -50,10 +50,11 @@ function changeNamespace {
     return
   fi
   echo "Prepare: $prepareFile"
-  filePrepare=$(( $filePrepare + 1 ))
+  filePrepareCount=$(( $filePrepareCount + 1 ))
   case "$1" in 
-    'geo/layers')
-      if [ ${filePrepare##*.} = 'json' ] ; then 
+    'geo')
+    #/layers 
+      if [ ${fprepareFile##*.} = 'json' ] ; then 
         cat $prepareFile | \
           sed -r "s|geomap/render/$nsPrev|geomap/render/$nsNew|" | \
           sed -r "s|@$nsPrev\"|@$nsNew\"|" |
@@ -61,9 +62,8 @@ function changeNamespace {
           sed -r "s|@$nsPrev/|@$nsNew/|" > \
             "$prepareFile-$curDate"
       fi
-      ;;
-    'geo/navigation')
-      if [ ${filePrepare##*.} = 'json' ] ; then 
+      #/navigation
+       if [ ${prepareFile##*.} = 'json' ] ; then 
         cat $prepareFile | \
           sed -r "s|geomap/render/$nsPrev|geomap/render/$nsNew|" | \
           sed -r "s|@$nsPrev\"|@$nsNew\"|" > \
@@ -71,14 +71,14 @@ function changeNamespace {
       fi
       ;;
     'meta')
-      if [ ${filePrepare##*.} = 'json' ] ; then 
+      if [ ${prepareFile##*.} = 'json' ] ; then 
         cat $prepareFile | \
           sed -r "s|@$nsPrev,|@$nsNew,|" > \
-            "$file-$curDate"
+            "$prepareFile-$curDate"
       fi
       ;;
     'navigation')
-      if [ ${filePrepare##*.} = 'json' ] ; then 
+      if [ ${prepareFile##*.} = 'json' ] ; then 
         cat $prepareFile | \
           sed -r "s|@$nsPrev\"|@$nsNew\"|" > \
             "$prepareFile-$curDate"
@@ -97,7 +97,7 @@ function changeNsInAllFilesInFolder {
   local filePath=$2
   for file in $filePath/* ; do 
     if [ -f "$file" ] ; then
-      filecount=$(( $filecount + 1 ))
+      fileCount=$(( $fileCount + 1 ))
       changeNamespace $1 $file   
     else
       changeNsInAllFilesInFolder $1 $file           
@@ -106,12 +106,12 @@ function changeNsInAllFilesInFolder {
 }
 
 for prepareFolder in ${appFolders[@]} ; do
-  filecount=0
-  filePrepare=0
+  fileCount=0
+  filePrepareCount=0
   if [ -d "$appPath/$prepareFolder" ] ; then
     changeNsInAllFilesInFolder $prepareFolder $appPath/$prepareFolder          
   fi
-  echo "Prepared $filePrepare($filecount)files in $appPath/$prepareFolder"
+  echo "Prepared $filePrepareCount($fileCount)files in $appPath/$prepareFolder"
 done
 
 
