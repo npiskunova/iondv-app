@@ -9,6 +9,17 @@ if ! [ $# -eq 3 ] ; then
   exit
 fi
 
+bashVer=`bash --version`
+regexp='^GNU bash, version ([0-9]+)\.'
+if [[ $bashVer =~ $regexp ]] ; then
+  if [ ${BASH_REMATCH[1]} -lt 3 ] ; then
+    echo "Bash version less 3. Need 3 or hignter" 
+    exit
+    fi
+else 
+  echo "Didn't check bash version. Need 3 or hignter"
+fi
+
 appPath=$1
 nsPrev=$2
 nsNew=$3
@@ -37,7 +48,7 @@ function checkPrevNsAndRenameFile {
 
 fileCount=0
 filePrepareCount=0
-appFolders=("meta" "navigation" "geo/layers" "geo/navigation")
+appFolders=("meta" "navigation" "geo") #/layers" "geo/navigation")
 
 
 # Function for change namespace in different instraction for different folder
@@ -53,28 +64,32 @@ function changeNamespace {
   filePrepareCount=$(( $filePrepareCount + 1 ))
   case "$1" in 
     'geo')
-    #/layers 
-      if [ ${fprepareFile##*.} = 'json' ] ; then 
-        cat $prepareFile | \
-          sed -r "s|geomap/render/$nsPrev|geomap/render/$nsNew|" | \
-          sed -r "s|@$nsPrev\"|@$nsNew\"|" |
-          sed -r "s|/registry/$nsPrev@|/registry/$nsNew@|" |
-          sed -r "s|@$nsPrev/|@$nsNew/|" > \
-            "$prepareFile-$curDate"
-      fi
-      #/navigation
-       if [ ${prepareFile##*.} = 'json' ] ; then 
-        cat $prepareFile | \
-          sed -r "s|geomap/render/$nsPrev|geomap/render/$nsNew|" | \
-          sed -r "s|@$nsPrev\"|@$nsNew\"|" > \
-            "$prepareFile-$curDate"
-      fi
+      if [[ $prepareFile =~ "/geo/layers/" ]] ; then 
+        if [ ${prepareFile##*.} = 'json' ] ; then 
+          cat $prepareFile | \
+            sed -r "s|geomap/render/$nsPrev|geomap/render/$nsNew|" | \
+            sed -r "s|@$nsPrev\"|@$nsNew\"|" |
+            sed -r "s|/registry/$nsPrev@|/registry/$nsNew@|" |
+            sed -r "s|@$nsPrev/|@$nsNew/|" > \
+              "$prepareFile-$curDate"
+          local prepared=0
+        fi
+      elif [[ $prepareFile =~ "/geo/navigation/" ]] ; then 
+        if [ ${prepareFile##*.} = 'json' ] ; then 
+          cat $prepareFile | \
+            sed -r "s|geomap/render/$nsPrev|geomap/render/$nsNew|" | \
+            sed -r "s|@$nsPrev\"|@$nsNew\"|" > \
+              "$prepareFile-$curDate"
+          local prepared=0
+        fi
+      fi    
       ;;
     'meta')
       if [ ${prepareFile##*.} = 'json' ] ; then 
         cat $prepareFile | \
           sed -r "s|@$nsPrev,|@$nsNew,|" > \
             "$prepareFile-$curDate"
+        local prepared=0
       fi
       ;;
     'navigation')
@@ -82,11 +97,22 @@ function changeNamespace {
         cat $prepareFile | \
           sed -r "s|@$nsPrev\"|@$nsNew\"|" > \
             "$prepareFile-$curDate"
+        local prepared=0
       fi
       ;;
-    * ) echo "$1 folder didn't have instruction to prepare. Skip";;
+    * ) 
+      if [[ $1 = "data" ]] ; then 
+        if [ ${prepareFile##*.} = 'zip' ] ; then
+          # skip check zip
+          echo > /dev/null; 
+        fi
+      else
+        echo "$1 folder didn't have instruction to prepare. Skip"
+      fi;;
   esac
-  checkPrevNsAndRenameFile $prepareFile
+  if [ $prepared ] ; then
+    checkPrevNsAndRenameFile $prepareFile
+  fi
 }
 
 

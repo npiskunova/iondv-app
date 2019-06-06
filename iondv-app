@@ -8,14 +8,16 @@
 # +TODO -y option: all yes
 # +TODO bugfix import data
 # +TODO CHECKOUT iondv engine
+# +TODO Check appName in param
+# +TODO check bash version > 3 (regexp)
 
 # TODO change appName and namespace in all metadata
 # TODO skip checkout - and also TODO set to default branch before
-# TODO method git, zip, npm
-# TODO Build in docker only, without use local Node.js
 # TODO Checkout to app version (if not start http)
-# TODO Simple get version with regexp in grep
-# TODO Check appName in param
+# TODO Simple get version with regexp in grep or bash(!)
+# TODO Build in docker only, without use local Node.js
+# TODO method git, zip, npm
+
 
 if ! [ $1 ] ; then
   echo 'Usage: iondv-app [OPTION]... IONDV_APP_NAME_OR_GIT_URL'
@@ -127,6 +129,17 @@ fi
 
 # Check
 if ! [ $skipCheck ] ; then 
+  # Bash
+  bashVer=`bash --version`
+  regexp='^GNU bash, version ([0-9]+)\.'
+  if [[ $bashVer =~ $regexp ]] ; then
+    if [ ${BASH_REMATCH[1]} -lt 3 ] ; then
+      echo "Bash version less 3. Need 3 or hignter" 
+      exit
+      fi
+  else 
+    echo "Didn't check bash version. Need 3 or hignter"
+  fi
   # Check git
   if ! [ $quietMode ] ; then echo 'Check environment: git, mongo, node, npm, node-gyp, gulp, bower'; fi
   git --version > /dev/null
