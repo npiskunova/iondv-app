@@ -2,7 +2,7 @@
 
 if ! [ $# -eq 3 ] ; then
   echo 'Usage: change-namespace.sh path orginal_namespace new_namespace'
-  echo 'Install IONDV. Framework application change namespace.'
+  echo 'IONDV. Framework application change namespace with typically app folders.'
   echo
   echo 'Example:'
   echo '  ./change-namespace.sh ./applications/crm-new crm-prev crm-new'
@@ -56,12 +56,16 @@ appFolders=("meta" "navigation" "geo") #/layers" "geo/navigation")
 # $2 - prepared file
 function changeNamespace {
   local prepareFile=$2
+  # Skip files
+  if [[ $1 = "data" ]] ; then 
+    if [ ${prepareFile##*.} = 'zip' ] ; then
+      return 
+    fi
+  fi
   local checkRes=`grep -n "$nsPrev" "$prepareFile"`
   if [ ${#checkRes} -eq 0 ] ; then
     return
   fi
-  echo "Prepare: $prepareFile"
-  filePrepareCount=$(( $filePrepareCount + 1 ))
   case "$1" in 
     'geo')
       if [[ $prepareFile =~ "/geo/layers/" ]] ; then 
@@ -101,16 +105,12 @@ function changeNamespace {
       fi
       ;;
     * ) 
-      if [[ $1 = "data" ]] ; then 
-        if [ ${prepareFile##*.} = 'zip' ] ; then
-          # skip check zip
-          echo > /dev/null; 
-        fi
-      else
-        echo "$1 folder didn't have instruction to prepare. Skip"
-      fi;;
+      echo "$1 folder didn't have instruction to prepare. Skip $prepareFile"
+      ;;
   esac
   if [ $prepared ] ; then
+    echo "Prepared: $prepareFile"
+    filePrepareCount=$(( $filePrepareCount + 1 ))
     checkPrevNsAndRenameFile $prepareFile
   fi
 }
@@ -120,8 +120,8 @@ function changeNamespace {
 # $1 - prepared app folder
 # $2 - folder for search files to prepare 
 function changeNsInAllFilesInFolder {
-  local filePath=$2
-  for file in $filePath/* ; do 
+  local filesPath=$2
+  for file in $filesPath/* ; do 
     if [ -f "$file" ] ; then
       fileCount=$(( $fileCount + 1 ))
       changeNamespace $1 $file   
@@ -131,15 +131,24 @@ function changeNsInAllFilesInFolder {
   done
 }
 
-for prepareFolder in ${appFolders[@]} ; do
+# for prepareFolder in ${appFolders[@]} ; do
+#   fileCount=0
+#   filePrepareCount=0
+#   if [ -d "$appPath/$prepareFolder" ] ; then
+#     changeNsInAllFilesInFolder $prepareFolder $appPath/$prepareFolder          
+#   fi
+#   echo "Prepared $filePrepareCount($fileCount)files in $appPath/$prepareFolder"
+# done
+
+for folder in $appPath/* ; do
   fileCount=0
   filePrepareCount=0
-  if [ -d "$appPath/$prepareFolder" ] ; then
-    changeNsInAllFilesInFolder $prepareFolder $appPath/$prepareFolder          
+  if [ -d $folder ] ; then
+    prepareFolder=${folder##*/}
+    changeNsInAllFilesInFolder $prepareFolder $folder 
+    echo "Prepared $filePrepareCount($fileCount)files in $folder"         
   fi
-  echo "Prepared $filePrepareCount($fileCount)files in $appPath/$prepareFolder"
 done
-
 
 
 # Вырезать
@@ -172,37 +181,6 @@ done
 #"ns@[a-zA-Z\-_]"
 #пути applications/ns
 
-# if [ -f "$appPath/package.json" ] ; then
-#   # echo "Process package.json"
-#   # cat $appPath/package.json | \
-#   #   sed -r "s|\"name\"\s*:\s*\"$nsPrev\"|\"name\": \"$nsNew\"|" > \
-#   #      $appPath/package_temp_$curDate.json
-#   # mv -f $appPath/package_temp_$curDate.json $appPath/package.json
-# fi
-
-if [ -f "$appPath/deploy.json" ] ; then
-  echo "Process deploy.json"
-  echo "  replace namespace" "namespace": "khv-svyaz-info"
- #   sed -r "s|(\"namespaces\"\s*:\s*\{\[\s\d\w\-а-яА-ЯёЁ\":\]*\[\^\}\])(\"$nsPrev\")|\1\"$nsNew\"|" \
-    #  sed -r "s|(\"namespaces\"\s*:\s*\{\[\s\d\w\-а-яА-ЯёЁ\":\]*\[\^\}\])|\1     -|" > \
-  cat $appPath/deploy.json | \
-    sed -r "s|\"applications/$nsPrev/|\"applications/$nsNew/|" | \
-    sed -r "s|\"namespace\"\s*:\s*\"$nsPrev\"|\"namespace\": \"$nsNew\"|" | \
-    sed -r "s|@$nsPrev\"|@$nsNew\"|" | \
-    sed -r "s|\"$nsPrev@|\"$nsNew@|" > \
-      $appPath/deploy_temp_$curDate.json
-
-  checkRes=`grep -n "$nsPrev" $appPath/deploy_temp_$curDate.json`
-  if [ ${#checkRes} -eq 0 ] ; then
-    echo "Namespace $nsPrev replace to $nsNew. Please, do manual recheck"
-  else
-    echo "Didn't all $nsPrev replace to $nsNew. Need manual check"
-    echo -e "$checkRes"
-  fi
-fi
-
-
-echo "All done"
   #      "refClass": "",
 #      "itemsClass": "conclusion",
 
@@ -236,4 +214,32 @@ echo "All done"
 
 # data
 # "_class": "employee@sakh-pm",
+
+
+if [ -f "$appPath/package.json" ] ; then
+  echo "Process package.json"
+  cat $appPath/package.json | \
+    sed -r "s|\"name\"\s*:\s*\"$nsPrev\"|\"name\": \"$nsNew\"|" > \
+       $appPath/package_temp_$curDate.json
+  mv -f $appPath/package_temp_$curDate.json $appPath/package.json
+fi
+
+if [ -f "$appPath/deploy.json" ] ; then
+  echo "Process deploy.json"
+  cat $appPath/deploy.json | \
+    sed -r "s|\"applications/$nsPrev/|\"applications/$nsNew/|" | \
+    sed -r "s|\"namespace\"\s*:\s*\"$nsPrev\"|\"namespace\": \"$nsNew\"|" | \
+    sed -r "s|\"$nsPrev\"\s*:\s*\"|\"$nsNew\": \"|" | \
+    sed -r "s|\"$nsPrev\"\s*:\s*\{|\"$nsNew\": \{|" | \
+    sed -r "s|@$nsPrev\"|@$nsNew\"|" | \
+    sed -r "s|\"$nsPrev@|\"$nsNew@|" > \
+      $appPath/deploy_temp_$curDate.json
+
+  checkRes=`grep -n "$nsPrev" $appPath/deploy_temp_$curDate.json`
+  if ! [ ${#checkRes} -eq 0 ] ; then
+    echo "Didn't all $nsPrev replace to $nsNew. Need manual check"
+    echo -e "$checkRes"
+  fi
+fi
+
 
