@@ -57,12 +57,12 @@ echo $appPath
 # $1 - path to prepared filename 
 function checkPrevNsAndRenameFile {
   local prepareFile=$1
-  local checkRes=`grep -n "$nsPrev" "$prepareFile-$curDate"`
+  mv -f "$prepareFile-$curDate" $prepareFile
+  local checkRes=`grep -n "$nsPrev" "$prepareFile"`
   if [ ${#checkRes} -ne 0 ] ; then
     echo "Didn't all $nsPrev replace to $nsNew in $prepareFile. Need manual check"
-    echo -e "$checkRes"
+    grep -n "$nsPrev" "$prepareFile"
   fi
-  mv -f "$prepareFile-$curDate" $prepareFile
 }
 
 fileCount=0
@@ -232,10 +232,11 @@ if [ -f "$appPath/deploy.json" ] ; then
     sed -r "s|\"$nsPrev@|\"$nsNew@|" > \
       $appPath/deploy_temp_$curDate.json
 
-  checkRes=`grep -n "$nsPrev" $appPath/deploy_temp_$curDate.json`
+  mv -f $appPath/deploy_temp_$curDate.json $appPath/deploy.json
+  checkRes=`grep -n "$nsPrev" $appPath/deploy.json`
   if ! [ ${#checkRes} -eq 0 ] ; then
     echo "Didn't all $nsPrev replace to $nsNew. Need manual check"
-    grep -n "$nsPrev" $appPath/deploy_temp_$curDate.json
+    grep -n "$nsPrev" $appPath/deploy.json
   fi
 fi
 
