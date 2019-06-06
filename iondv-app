@@ -275,10 +275,8 @@ fi
 # Change app name and namespace
 if [ $newAppName ] ; then
   cd $startDir
-  $scriptPath/change-namespace.sh "$frameworkPath/applications/$appName" $prevAppName $newAppName
+  $scriptPath/change-namespace.sh $quietMode "$frameworkPath/applications/$appName" $prevAppName $newAppName
 fi
-exit
-
 
 if [ $dockerUse ] ; then  
   echo "Will be stop container and remove $dockerName, remove docker image: $imageName:latest and $imageName:$imageVer"

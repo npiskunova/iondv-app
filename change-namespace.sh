@@ -1,6 +1,6 @@
 #!/bin/bash
 
-if ! [ $# -eq 3 ] ; then
+if [ $# -lt 3 ] ; then
   echo 'Usage: change-namespace.sh path orginal_namespace new_namespace'
   echo 'IONDV. Framework application change namespace with typically app folders.'
   echo
@@ -20,12 +20,31 @@ else
   echo "Didn't check bash version. Need 3 or hignter"
 fi
 
-appPath=$1
-nsPrev=$2
-nsNew=$3
 IFS_def=$IFS
-
 curDate=`date +"%Y%m%d-%H-%M"`
+
+while [ -n "$1" ]
+do
+  case "$1" in
+    -q) quietMode=1; paramInfo="$paramInfo\nFound the quiet data option";;
+    *)  if [[ ${1:0:1} == "-" ]] ; then 
+        echo "$1 is not an option" 
+        shift
+        else 
+          if ! [ $appPath ] ; then
+            appPath=$1
+          elif ! [ $nsPrev ] ; then
+            nsPrev=$1
+          elif ! [ $nsNew ] ; then
+            nsNew=$1
+          else
+            echo "Exteneded parameters, ignored"
+          fi
+        fi;;
+  esac
+shift
+done
+if ! [ $quietMode ] ; then echo -e $paramInfo; fi
 
 
 if ! [ -d $appPath ]; then
@@ -48,8 +67,6 @@ function checkPrevNsAndRenameFile {
 
 fileCount=0
 filePrepareCount=0
-appFolders=("meta" "navigation" "geo") #/layers" "geo/navigation")
-
 
 # Function for change namespace in different instraction for different folder
 # $1 - prepared app folder
@@ -105,11 +122,11 @@ function changeNamespace {
       fi
       ;;
     * ) 
-      echo "$1 folder didn't have instruction to prepare. Skip $prepareFile"
+      if ! [ $quietMode ] ; then echo "$1 folder didn't have instruction to prepare. Skip $prepareFile"; fi      
       ;;
   esac
   if [ $prepared ] ; then
-    echo "Prepared: $prepareFile"
+    if ! [ $quietMode ] ; then echo "Prepared: $prepareFile"; fi    
     filePrepareCount=$(( $filePrepareCount + 1 ))
     checkPrevNsAndRenameFile $prepareFile
   fi
@@ -146,29 +163,9 @@ for folder in $appPath/* ; do
   if [ -d $folder ] ; then
     prepareFolder=${folder##*/}
     changeNsInAllFilesInFolder $prepareFolder $folder 
-    echo "Prepared $filePrepareCount($fileCount)files in $folder"         
+    if ! [ $quietMode ] ; then echo "Prepared $filePrepareCount($fileCount)files in $folder"; fi          
   fi
 done
-
-
-# Вырезать
-#sed 's/"logo": "geoicons\/logo.png",//' ./applications/khv-svyaz-info/deploy.json > ./applications/khv-svyaz-info/deploy_temp_$curDate.json
-#grep '"engines"\s*:\s*{' $frameworkPath/applications/$appName/package.json > /dev/null # Check empty
-#if [ $? -eq 0 ]; then
-#grep '"engines"\s*:\s*{[\s\n]*}' $frameworkPath/applications/$appName/package.json > /dev/null
-#fi
-#if [ $? -ne 0 ]; then
-#  engines=`sed -n -r '/"engines":\s+\{/,/\}/{ /"engines":\s+\{/d; /}/d; p; }' $frameworkPath/applications/$appName/package.json`
-#  if ! [ ${#engines[@]} = 0 ] ; then
-#    for i in ${enginelist[@]}
-#    do
-#    enginelist=`echo $engines | tr -d [:space:] | tr -d '"' | tr ',' '\n'`
-#      IFS=':' tmp=($i)
-#      if [ ${tmp[0]} = "ion" ]; then
-#        git checkout tags/${tmp[1]}
-
-
-#  imageVer=`grep "version" $frameworkPath/applications/$appName/package.json | sed 's/"version\"://' | sed 's/"//g' | sed 's/,//g' | sed 's/ //g'`
 
 
 #отдельной утилитой
@@ -217,7 +214,7 @@ done
 
 
 if [ -f "$appPath/package.json" ] ; then
-  echo "Process package.json"
+  if ! [ $quietMode ] ; then echo "Process package.json"; fi  
   cat $appPath/package.json | \
     sed -r "s|\"name\"\s*:\s*\"$nsPrev\"|\"name\": \"$nsNew\"|" > \
        $appPath/package_temp_$curDate.json
@@ -225,7 +222,7 @@ if [ -f "$appPath/package.json" ] ; then
 fi
 
 if [ -f "$appPath/deploy.json" ] ; then
-  echo "Process deploy.json"
+  if ! [ $quietMode ] ; then echo "Process deploy.json"; fi  
   cat $appPath/deploy.json | \
     sed -r "s|\"applications/$nsPrev/|\"applications/$nsNew/|" | \
     sed -r "s|\"namespace\"\s*:\s*\"$nsPrev\"|\"namespace\": \"$nsNew\"|" | \
@@ -238,7 +235,7 @@ if [ -f "$appPath/deploy.json" ] ; then
   checkRes=`grep -n "$nsPrev" $appPath/deploy_temp_$curDate.json`
   if ! [ ${#checkRes} -eq 0 ] ; then
     echo "Didn't all $nsPrev replace to $nsNew. Need manual check"
-    echo -e "$checkRes"
+    grep -n "$nsPrev" $appPath/deploy_temp_$curDate.json
   fi
 fi
 
