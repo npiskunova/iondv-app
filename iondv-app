@@ -314,6 +314,7 @@ if [ $? -ne 0 ]; then
     do
       IFS=':' tmp=($i)
       if [ ${tmp[0]} = "ion" ]; then
+        cd "$frameworkPath"
         git checkout tags/${tmp[1]}
         if ! [ $quietMode ] ; then echo "Use ion engine: $i"; fi
       fi
