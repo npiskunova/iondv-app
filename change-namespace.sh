@@ -177,20 +177,8 @@ done
 #"ns@[a-zA-Z\-_]"
 #пути applications/ns
 
-  #      "refClass": "",
+#      "refClass": "",
 #      "itemsClass": "conclusion",
-
-# for file in /home/likegeeks/*
-# do
-# if [ -d "$file" ]
-# then
-# echo "$file is a directory"
-# elif [ -f "$file" ]
-# then
-# echo "$file is a file"
-# fi
-# done
-
 
 
 #ACL n:::sakh-pm@

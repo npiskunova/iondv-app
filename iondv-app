@@ -10,17 +10,16 @@
 # +TODO CHECKOUT iondv engine
 # +TODO Check appName in param
 # +TODO check bash version > 3 (regexp)
+# +TODO change appName and namespace in all metadata
+# +TODO skip checkout - and also TODO set to default branch before
+# +TODO Simple get version with regexp in grep or bash(!)
 
-# TODO change appName and namespace in all metadata
-# TODO skip checkout - and also TODO set to default branch before
 # TODO Checkout to app version (if not start http)
-# TODO Simple get version with regexp in grep or bash(!)
 # TODO Build in docker only, without use local Node.js
 # TODO method git, zip, npm
 
-
 if ! [ $1 ] ; then
-  echo 'Usage: iondv-app [OPTION]... IONDV_APP_NAME_OR_GIT_URL'
+  echo 'Usage: iondv-app [OPTION]... IONDV_APP_NAME|IONDV_APP_NAME@VERSION|GIT_URL'
   echo 'Install IONDV. Framework application to current dirrectory and create docker image.'
   echo
   echo 'Options:'
@@ -47,7 +46,7 @@ if ! [ $1 ] ; then
   echo '  IONDVUrlGitExtApp          Base of URL for get app extension, default https://github.com/iondv'
   echo
   echo 'Example:'
-  echo '  ./iondv-app -d -l mongodb khs-ticket-discount'
+  echo '  ./iondv-app -d -l mongodb khs-ticket-discount@1.0.1'
   echo '  ./iondv-app -m localhost:27017 https://github.com/akumidv/svyaz-info.git'
   exit
 fi
@@ -88,7 +87,6 @@ case "$1" in
 shift
 done
 
-$appName
 if ! [ $appName ] ; then 
   echo "Didn't set application name or git url"
   exit
@@ -101,6 +99,24 @@ if ! [ $IONDVUrlGitModules ] ; then IONDVUrlGitModules=https://github.com/iondv;
 if ! [ $IONDVUrlGitApp ] ; then IONDVUrlGitApp=https://github.com/iondv; fi
 if ! [ $IONDVUrlGitExtApp ] ; then IONDVUrlGitExtApp=https://github.com/iondv; fi
 
+checkUrl=`echo $appName  | grep "^http"`
+if [ $? -eq 0 ]; then
+  appGitLink=$appName
+  appName=`echo $appName | grep -Po "[\-\w]+\.git" | sed 's/.git//'`
+elif [[ $appName =~ "@" ]] ; then
+  appGetVersion=${appName##*@}
+  appName=${appName%@*}
+  appGitLink=$IONDVUrlGitApp/$appName.git
+else
+  appGitLink=$IONDVUrlGitApp/$appName.git
+fi
+
+
+if [ $newAppName ] ; then
+  appGitLink=$IONDVUrlGitApp/$appName.git
+  prevAppName=$appName
+  appName=$newAppName
+fi
 
 if ! [ $quietMode ] ; then 
   echo -e "$paramInfo";
@@ -108,20 +124,14 @@ if ! [ $quietMode ] ; then
   echo "Module base URL: $IONDVUrlGitModules"
   echo "App base URL: $IONDVUrlGitApp"
   echo "ExtApp base URL: $IONDVUrlGitExtApp"
-fi
-
-checkUrl=`echo $appName  | grep "^http"`
-if [ $? -eq 0 ]; then
-  appGitLink=$appName
-  appName=`echo $appName | grep -Po "[\-\w]+\.git" | sed 's/.git//'`
-else
-  appGitLink=$IONDVUrlGitApp/$appName.git
-fi
-
-if [ $newAppName ] ; then
-  appGitLink=$IONDVUrlGitApp/$appName.git
-  prevAppName=$appName
-  appName=$newAppName
+  echo "App git link: $appGitLink"
+  if [ $prevAppName ] ; then 
+    echo "Changed namespace: $prevAppName" 
+    echo "New app name and namespace: $appName" 
+  else 
+    echo "App name: $appName" 
+  fi
+  if [ $appGetVersion ] ; then echo "App version: $appGetVersion"; fi
 fi
 
 if [ $mongoLink ] ; then
@@ -269,9 +279,8 @@ else
   if ! [ $quietMode ] ; then echo "Git: clone IONDV. app - $appName from $appGitLink"; fi
   git clone --quiet "$appGitLink"
   if [ $? -ne 0 ]; then echo "Didn't clone $appGitLink"; exit; fi
-  appVer=`grep -E '\"version\"\s*:\s*\"' $frameworkPath/applications/$appName//package.json | grep -o -E '[0-9\.]+'`
-  if ! [ $quietMode ] ; then echo "Current app version: $appVer"; fi
 fi
+
 
 # Change app name and namespace
 if [ $newAppName ] ; then
@@ -298,6 +307,16 @@ if [ $dockerUse ] ; then
     * ) echo "invalid";;
   esac
 fi
+
+appVer=`grep -E '\"version\"\s*:\s*\"' $frameworkPath/applications/$appName//package.json | grep -o -E '[0-9\.]+'`
+if [ $appGetVersion ] ; then
+  git checkout tags/${tmp[1]}
+  if [[ $appGetVersion != $appVer ]] ; then 
+    echo "App version is different. Requred $appGetVersion, current $appVer."
+    exit
+  fi
+fi
+if ! [ $quietMode ] ; then echo "Preparing app version: $appVer"; fi
 
 # package.json dependencies 
 IFS_def=$IFS
@@ -371,11 +390,10 @@ if [ $? -ne 0 ]; then
     modlist=`echo $modules | tr -d [:space:] | tr -d '"' | tr ',' '\n'`
     for i in ${modlist[@]}
     do
-      if ! [ $quietMode ] ; then echo "Inslall module: $i"; fi
+      if ! [ $quietMode ] ; then echo "Install module: $i"; fi
       IFS=':' tmp=($i)
       if ! [ -d "$frameworkPath/modules/${tmp[0]}" ]; then
         cd $frameworkPath/modules
-        if ! [ $quietMode ] ; then echo `pwd`; echo $gitModules/${tmp[0]}.git; fi
         git clone --quiet "$IONDVUrlGitModules/${tmp[0]}.git"
         if [ $? -ne 0 ]; then echo "Didn't clone $IONDVUrlGitModules/${tmp[0]}.git"; exit; fi
       fi
