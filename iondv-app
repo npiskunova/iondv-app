@@ -38,6 +38,7 @@ if ! [ $1 ] ; then
   echo '  -s [value]                  full path to script, go running after install and before build app'
   echo '  -m [value]                  mongo uri, for example: mongodb:27017. Default localhost:27017'
   echo '  -n [value]                  new app namespace and name'
+  echo '  -t                          skip checkout to version in tag. Use default (last) version' 
   echo
   echo 'Environment:'
   echo '  IONDVUrlGitFramework       URL for get framework, default: https://github.com/iondv/framework.git'
@@ -66,6 +67,7 @@ case "$1" in
   -i) importData=1; paramInfo="$paramInfo\nFound the import data option";;
   -y) yesToAll=1; paramInfo="$paramInfo\nFound yes to all option";;
   -q) quietMode=1; paramInfo="$paramInfo\nFound the quiet data option";;
+  -t) skipTagMode=1; paramInfo="$paramInfo\nFound the skip tag checkout option";;
   -l) mongoLink="$2"; paramInfo="$paramInfo\nFound the docker mongo link option"
   shift ;;
   -m) mongodbUri="$2"; paramInfo="$paramInfo\nFound the mongodb option"
@@ -253,7 +255,7 @@ else
   git stash
   git pull
 fi
-
+0,
 if ! [ -d "$frameworkPath/applications" ]; then 
   mkdir "$frameworkPath/applications" 
 fi
@@ -300,25 +302,27 @@ fi
 # package.json dependencies 
 IFS_def=$IFS
 # engines - iondv framework version
-grep '"engines"\s*:\s*{' $frameworkPath/applications/$appName/package.json > /dev/null # Check empty
-if [ $? -eq 0 ]; then 
-grep '"engines"\s*:\s*{[\s\n]*}' $frameworkPath/applications/$appName/package.json > /dev/null
-fi
-if [ $? -ne 0 ]; then
-  engines=`sed -n -r '/"engines":\s+\{/,/\}/{ /"engines":\s+\{/d; /}/d; p; }' $frameworkPath/applications/$appName/package.json`
-  if ! [ ${#engines[@]} = 0 ] ; then 
-    if ! [ $quietMode ] ; then echo "Engine list: $engines"; fi
-    enginelist=`echo $engines | tr -d [:space:] | tr -d '"' | tr ',' '\n'`
-    for i in ${enginelist[@]}
-    do
-      IFS=':' tmp=($i)
-      if [ ${tmp[0]} = "ion" ]; then
-        cd "$frameworkPath"
-        git checkout tags/${tmp[1]}
-        if ! [ $quietMode ] ; then echo "Use ion engine: $i"; fi
-      fi
-      IFS=$IFS_def
-    done
+if ! [ $skipTagMode ] ; then
+  grep '"engines"\s*:\s*{' $frameworkPath/applications/$appName/package.json > /dev/null # Check empty
+  if [ $? -eq 0 ]; then 
+  grep '"engines"\s*:\s*{[\s\n]*}' $frameworkPath/applications/$appName/package.json > /dev/null
+  fi
+  if [ $? -ne 0 ]; then
+    engines=`sed -n -r '/"engines":\s+\{/,/\}/{ /"engines":\s+\{/d; /}/d; p; }' $frameworkPath/applications/$appName/package.json`
+    if ! [ ${#engines[@]} = 0 ] ; then 
+      if ! [ $quietMode ] ; then echo "Engine list: $engines"; fi
+      enginelist=`echo $engines | tr -d [:space:] | tr -d '"' | tr ',' '\n'`
+      for i in ${enginelist[@]}
+      do
+        IFS=':' tmp=($i)
+        if [ ${tmp[0]} = "ion" ]; then
+          cd "$frameworkPath"
+          git checkout tags/${tmp[1]}
+          if ! [ $quietMode ] ; then echo "Use ion engine: $i"; fi
+        fi
+        IFS=$IFS_def
+      done
+    fi
   fi
 fi
 
@@ -345,7 +349,7 @@ if [ $? -ne 0 ]; then
       cd "$frameworkPath/applications/${tmp[0]}"
       git stash
       git pull
-      git checkout tags/${tmp[1]}
+      if ! [ $skipTagMode ] ; then git checkout tags/${tmp[1]}; fi
       IFS=$IFS_def
     done
   fi
@@ -378,7 +382,7 @@ if [ $? -ne 0 ]; then
       cd "$frameworkPath/modules/${tmp[0]}"
       git stash
       git pull
-      git checkout tags/${tmp[1]}
+      if ! [ $skipTagMode ] ; then git checkout tags/${tmp[1]}; fi
       IFS=$IFS_def
     done
   fi
