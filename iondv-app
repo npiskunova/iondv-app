@@ -113,7 +113,7 @@ fi
 
 
 if [ $newAppName ] ; then
-  appGitLink=$IONDVUrlGitApp/$appName.git
+  if ! [ $appGitLink ] ; then appGitLink=$IONDVUrlGitApp/$appName.git ; fi
   prevAppName=$appName
   appName=$newAppName
 fi
@@ -265,13 +265,13 @@ else
   git stash
   git pull
 fi
-0,
+
 if ! [ -d "$frameworkPath/applications" ]; then 
   mkdir "$frameworkPath/applications" 
 fi
 
 if [ -d "$frameworkPath/applications/$appName" ]; then
-  appVer=`grep -E '\"version\"\s*:\s*\"' $frameworkPath/applications/$appName//package.json | grep -o -E '[0-9\.]+'`
+  appVer=`grep -E '\"version\"\s*:\s*\"' $frameworkPath/applications/$appName/package.json | grep -o -E '[0-9\.]+'`
   git stash
   git pull
 else
