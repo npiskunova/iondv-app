@@ -35,7 +35,7 @@ if ! [ $1 ] ; then
   echo '  -l [value]                  mongodb docker name, for link with app docker container'
   echo '                              (also set mongo uri value to [value]:27017)'
   echo '  -p [value]                  workspace path, where will created app folder'
-  echo '  -s [value]                  script to run after install and before build app'
+  echo '  -s [value]                  full path to script, go running after install and before build app'
   echo '  -m [value]                  mongo uri, for example: mongodb:27017. Default localhost:27017'
   echo '  -n [value]                  new app namespace and name'
   echo
@@ -259,8 +259,7 @@ if ! [ -d "$frameworkPath/applications" ]; then
 fi
 
 if [ -d "$frameworkPath/applications/$appName" ]; then
-  appVer=`grep "version" $frameworkPath/applications/$appName/package.json | sed 's/"version\"://' | sed 's/"//g' | sed 's/,//g' | sed 's/ //g'`
-  if ! [ $quietMode ] ; then echo "Current app version: $appVer"; echo "Git: stash and update IONDV. app - $appName"; fi
+  appVer=`grep -E '\"version\"\s*:\s*\"' $frameworkPath/applications/$appName//package.json | grep -o -E '[0-9\.]+'`
   git stash
   git pull
 else
@@ -268,7 +267,7 @@ else
   if ! [ $quietMode ] ; then echo "Git: clone IONDV. app - $appName from $appGitLink"; fi
   git clone --quiet "$appGitLink"
   if [ $? -ne 0 ]; then echo "Didn't clone $appGitLink"; exit; fi
-  appVer=`grep "version" $frameworkPath/applications/$appName/package.json | sed 's/"version\"://' | sed 's/"//g' | sed 's/,//g' | sed 's/ //g'`
+  appVer=`grep -E '\"version\"\s*:\s*\"' $frameworkPath/applications/$appName//package.json | grep -o -E '[0-9\.]+'`
   if ! [ $quietMode ] ; then echo "Current app version: $appVer"; fi
 fi
 
@@ -286,12 +285,12 @@ if [ $dockerUse ] ; then
   else
     read -p "Continue (y/n)?" choice
   fi
-  case "$choice" in 
+  case "$choice" in
     y|Y ) 
       docker stop $dockerName
       docker rm $dockerName
       docker image rmi $imageName:latest
-      docker image rmi $imageName:$imageVer
+      docker image rmi $imageName:$appVer
       docker exec -it $mongoLink mongo $dbName --quiet --eval "db.dropDatabase();";;
     n|N );;
     * ) echo "invalid";;
@@ -442,6 +441,7 @@ if [ $dockerUse ] ; then
 fi
 
 
+cd $frameworkPath
 if [ $postInstScript ] ; then
   if ! [ $quietMode ] ; then echo "Running postInstall script $postInstScript, before app build"; fi
   $postInstScript
@@ -466,7 +466,7 @@ if ! [ $dockerUse ] ; then
   echo "Test user. Login: demo, password: ion-demo"
   bash ./init.sh
 else
-  imageVer=`grep "version" $frameworkPath/applications/$appName/package.json | sed 's/"version\"://' | sed 's/"//g' | sed 's/,//g' | sed 's/ //g'`
+  imageVer=`grep -E '\"version\"\s*:\s*\"' $frameworkPath/applications/$appName//package.json | grep -o -E '[0-9\.]+'`
   if ! [ $quietMode ] ; then echo "Build docker version: $imageVer"; fi
   cd $frameworkPath
   docker image build -t $imageName:$imageVer .
@@ -480,7 +480,7 @@ else
     if ! [ $quietMode ] ; then echo "Running docker container: $dockerName"; fi
     docker run -d -p 8888:8888 --name $dockerName $imageName 
   fi
-  sleep 30
+  sleep 60
   if ! [ $quietMode ] ; then docker logs $dockerName; fi
   curl localhost:8888 # TODO проверка результата
   if [ $yesToAll ] ; then

@@ -84,6 +84,14 @@ function changeNamespace {
     return
   fi
   case "$1" in 
+    'data')
+      if [ ${prepareFile##*.} = 'json' ] ; then 
+          cat $prepareFile | \
+            sed -r "s|@$nsPrev\"|@$nsNew\"|" > \
+              "$prepareFile-$curDate"
+          local prepared=0
+      fi
+      ;;
     'geo')
       if [[ $prepareFile =~ "/geo/layers/" ]] ; then 
         if [ ${prepareFile##*.} = 'json' ] ; then 
@@ -138,31 +146,22 @@ function changeNamespace {
 # $2 - folder for search files to prepare 
 function changeNsInAllFilesInFolder {
   local filesPath=$2
-  for file in $filesPath/* ; do 
+  for file in $filesPath/* ; do
     if [ -f "$file" ] ; then
       fileCount=$(( $fileCount + 1 ))
-      changeNamespace $1 $file   
-    else
-      changeNsInAllFilesInFolder $1 $file           
+      changeNamespace $1 $file
+    elif [ -d "$file" ] ; then
+      changeNsInAllFilesInFolder $1 $file
     fi
   done
 }
-
-# for prepareFolder in ${appFolders[@]} ; do
-#   fileCount=0
-#   filePrepareCount=0
-#   if [ -d "$appPath/$prepareFolder" ] ; then
-#     changeNsInAllFilesInFolder $prepareFolder $appPath/$prepareFolder          
-#   fi
-#   echo "Prepared $filePrepareCount($fileCount)files in $appPath/$prepareFolder"
-# done
 
 for folder in $appPath/* ; do
   fileCount=0
   filePrepareCount=0
   if [ -d $folder ] ; then
     prepareFolder=${folder##*/}
-    changeNsInAllFilesInFolder $prepareFolder $folder 
+    changeNsInAllFilesInFolder $prepareFolder $folder
     if ! [ $quietMode ] ; then echo "Prepared $filePrepareCount($fileCount)files in $folder"; fi          
   fi
 done
