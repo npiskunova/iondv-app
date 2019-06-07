@@ -277,7 +277,7 @@ if [ -d "$frameworkPath/applications/$appName" ]; then
 else
   cd "$frameworkPath/applications"
   if ! [ $quietMode ] ; then echo "Git: clone IONDV. app - $appName from $appGitLink"; fi
-  git clone --quiet "$appGitLink"
+  git clone --quiet "$appGitLink" $appName
   if [ $? -ne 0 ]; then echo "Didn't clone $appGitLink"; exit; fi
 fi
 

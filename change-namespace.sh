@@ -76,6 +76,7 @@ function changeNamespace {
   # Skip files
   if [[ $1 = "data" ]] ; then 
     if [ ${prepareFile##*.} = 'zip' ] ; then
+    echo $prepareFile
       return 
     fi
   fi
@@ -85,11 +86,15 @@ function changeNamespace {
   fi
   case "$1" in 
     'data')
-      if [ ${prepareFile##*.} = 'json' ] ; then 
-          cat $prepareFile | \
-            sed -r "s|@$nsPrev\"|@$nsNew\"|" > \
-              "$prepareFile-$curDate"
-          local prepared=0
+      if [ ${prepareFile##*.} = 'json' ] ; then
+        tempName=${prepareFile%@*}
+        newDataFileName="${tempName%@*}@$nsNew@${prepareFile##*@}" 
+        cat $prepareFile | \
+          sed -r "s|@$nsPrev\"|@$nsNew\"|" > \
+            "$newDataFileName-$curDate"
+        rm -f $prepareFile
+        prepareFile=$newDataFileName
+        local prepared=1
       fi
       ;;
     'geo')
@@ -101,7 +106,7 @@ function changeNamespace {
             sed -r "s|/registry/$nsPrev@|/registry/$nsNew@|" |
             sed -r "s|@$nsPrev/|@$nsNew/|" > \
               "$prepareFile-$curDate"
-          local prepared=0
+          local prepared=1
         fi
       elif [[ $prepareFile =~ "/geo/navigation/" ]] ; then 
         if [ ${prepareFile##*.} = 'json' ] ; then 
@@ -109,7 +114,7 @@ function changeNamespace {
             sed -r "s|geomap/render/$nsPrev|geomap/render/$nsNew|" | \
             sed -r "s|@$nsPrev\"|@$nsNew\"|" > \
               "$prepareFile-$curDate"
-          local prepared=0
+          local prepared=1
         fi
       fi    
       ;;
@@ -118,7 +123,7 @@ function changeNamespace {
         cat $prepareFile | \
           sed -r "s|@$nsPrev,|@$nsNew,|" > \
             "$prepareFile-$curDate"
-        local prepared=0
+        local prepared=1
       fi
       ;;
     'navigation')
@@ -126,7 +131,7 @@ function changeNamespace {
         cat $prepareFile | \
           sed -r "s|@$nsPrev\"|@$nsNew\"|" > \
             "$prepareFile-$curDate"
-        local prepared=0
+        local prepared=1
       fi
       ;;
     * ) 
