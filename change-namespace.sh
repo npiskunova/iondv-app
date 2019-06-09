@@ -74,24 +74,28 @@ filePrepareCount=0
 function changeNamespace {
   local prepareFile=$2
   # Skip files
-  if [[ $1 = "data" ]] ; then 
-    if [ ${prepareFile##*.} = 'zip' ] ; then
-    echo $prepareFile
-      return 
-    fi
-  fi
+  # Specific folder prepare
+  case "$1" in 
+    'data')
+      if [ ${prepareFile##*.} = 'zip' ] ; then
+        echo "Skip: $prepareFile"
+        return
+      fi
+      ;;
+    * )
+      ;;
+  esac
+
+  # Files prepare
   local checkRes=`grep -n "$nsPrev" "$prepareFile"`
-  if [ ${#checkRes} -eq 0 ] ; then
-    return
-  fi
+  if [ ${#checkRes} -eq 0 ] ; then return; fi
   case "$1" in 
     'data')
       if [ ${prepareFile##*.} = 'json' ] ; then
         tempName=${prepareFile%@*}
         newDataFileName="${tempName%@*}@$nsNew@${prepareFile##*@}" 
         cat $prepareFile | \
-          sed -r "s|@$nsPrev\"|@$nsNew\"|" > \
-            "$newDataFileName-$curDate"
+          sed -r "s|@$nsPrev\"|@$nsNew\"|" > "$newDataFileName-$curDate"
         rm -f $prepareFile
         prepareFile=$newDataFileName
         local prepared=1
@@ -101,39 +105,47 @@ function changeNamespace {
       if [[ $prepareFile =~ "/geo/layers/" ]] ; then 
         if [ ${prepareFile##*.} = 'json' ] ; then 
           cat $prepareFile | \
-            sed -r "s|geomap/render/$nsPrev|geomap/render/$nsNew|" | \
+            sed -r "s|geomap/render/$nsPrev|geomap/render/$nsNew|" |
             sed -r "s|@$nsPrev\"|@$nsNew\"|" |
             sed -r "s|/registry/$nsPrev@|/registry/$nsNew@|" |
-            sed -r "s|@$nsPrev/|@$nsNew/|" > \
-              "$prepareFile-$curDate"
+            sed -r "s|@$nsPrev/|@$nsNew/|" > "$prepareFile-$curDate"
           local prepared=1
         fi
       elif [[ $prepareFile =~ "/geo/navigation/" ]] ; then 
         if [ ${prepareFile##*.} = 'json' ] ; then 
           cat $prepareFile | \
             sed -r "s|geomap/render/$nsPrev|geomap/render/$nsNew|" | \
-            sed -r "s|@$nsPrev\"|@$nsNew\"|" > \
-              "$prepareFile-$curDate"
+            sed -r "s|@$nsPrev\"|@$nsNew\"|" > "$prepareFile-$curDate"
           local prepared=1
         fi
-      fi    
+      fi
       ;;
     'meta')
       if [ ${prepareFile##*.} = 'json' ] ; then 
         cat $prepareFile | \
-          sed -r "s|@$nsPrev,|@$nsNew,|" > \
-            "$prepareFile-$curDate"
+          sed -r "s|@$nsPrev,|@$nsNew,|" > "$prepareFile-$curDate"
         local prepared=1
       fi
       ;;
     'navigation')
       if [ ${prepareFile##*.} = 'json' ] ; then 
-        cat $prepareFile | \
-          sed -r "s|@$nsPrev\"|@$nsNew\"|" > \
-            "$prepareFile-$curDate"
+        cat $prepareFile |
+          sed -r "s|@$nsPrev\"|@$nsNew\"|" > "$prepareFile-$curDate"
         local prepared=1
       fi
       ;;
+    'templates')
+      if [ ${prepareFile##*.} = 'ejs' ] ; then 
+        cat $prepareFile | \
+          sed -r "s|geomap/render/$nsPrev|geomap/render/$nsNew|" |
+          sed -r "s|/report/public/$nsPrev@|/report/public/$nsNew@|" |
+          sed -r "s|/registry/$nsPrev@|/registry/$nsNew@|" |
+          sed -r "s|@$nsPrev/|@$nsNew/|" > "$prepareFile-$curDate"
+
+        local prepared=1
+      fi
+      ;;
+
     * ) 
       if ! [ $quietMode ] ; then echo "$1 folder didn't have instruction to prepare. Skip $prepareFile"; fi      
       ;;
@@ -160,6 +172,10 @@ function changeNsInAllFilesInFolder {
     fi
   done
 }
+
+if [ -d $appPath/export/item/$nsPrev ] ; then
+  mv -f $appPath/export/item/$nsPrev $appPath/export/item/$nsNew
+fi
 
 for folder in $appPath/* ; do
   fileCount=0

@@ -509,11 +509,13 @@ else
     echo "Save docker container to file"
     choice="y"
   else
-    read -p "Save docker container to file (y/n)?" choice
+    read -p "\nSave docker container to file at $startDie (y/n)?" choice
   fi
   case "$choice" in
     y|Y ) 
-      docker save $imageName:latest -o $dockerName.docker-image.tar;;
+      docker save $imageName:latest -o $startDir/$dockerName.docker-image.tar
+      echo "Save $startDir/$dockerName.docker-image.tar"
+      ;;
     n|N );;
     * ) echo "invalid";;
   esac
