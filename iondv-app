@@ -13,9 +13,9 @@
 # +TODO change appName and namespace in all metadata
 # +TODO skip checkout - and also TODO set to default branch before
 # +TODO Simple get version with regexp in grep or bash(!)
-
-# TODO Checkout to app version (if not start http)
+# +TODO Checkout to app version (if not start http)
 # TODO Build in docker only, without use local Node.js
+
 # TODO method git, zip, npm
 
 if ! [ $1 ] ; then
@@ -28,6 +28,7 @@ if ! [ $1 ] ; then
   echo '  -c [value]                  start cluster with [value] count'
   echo '  -r                          remove app folder, if they exist'
   echo '  -i                          import data'
+  echo '  -a                          import acl (role and user)'
   echo '  -y                          yes to all'
   echo '  -k                          skip check'
   echo '  -q                          quiet mode. Show only major and warn information'
@@ -64,6 +65,7 @@ case "$1" in
   -r) removeAppFolder=1; paramInfo="$paramInfo\nFound the remove current app folder option";;
   -k) skipCheck=1; paramInfo="$paramInfo\nFound the skip check option";;
   -i) importData=1; paramInfo="$paramInfo\nFound the import data option";;
+  -a) importAcl=1; paramInfo="$paramInfo\nFound the import acl option";;
   -y) yesToAll=1; paramInfo="$paramInfo\nFound yes to all option";;
   -q) quietMode=1; paramInfo="$paramInfo\nFound the quiet data option";;
   -t) skipTagMode=1; paramInfo="$paramInfo\nFound the skip tag checkout option";;
@@ -431,6 +433,7 @@ done
 if [ $importData ] ; then echo "node bin/import-data --src ./applications/$appName/data --ns $appName" >> "$frameworkPath/init.sh"; fi
 echo "node bin/adduser --name demo --pwd ion-demo" >> "$frameworkPath/init.sh"
 echo "node bin/acl --u demo@local --role admin --p full" >> "$frameworkPath/init.sh"
+if [ $importAcl ] ; then echo "node bin/acl --d ./applications/$appName/acl" >> "$frameworkPath/init.sh"; fi
 if [ $startCluster ] ; then
   echo "export WORKER_COUNT=$startCluster" >> "$frameworkPath/init.sh"
   echo "node bin/cluster" >> "$frameworkPath/init.sh"
