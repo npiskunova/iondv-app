@@ -8,18 +8,6 @@ if [ $# -lt 3 ] ; then
   echo '  ./change-namespace.sh ./applications/crm-new crm-prev crm-new'
   exit
 fi
-
-bashVer=`bash --version`
-regexp='^GNU bash, version ([0-9]+)\.'
-if [[ $bashVer =~ $regexp ]] ; then
-  if [ ${BASH_REMATCH[1]} -lt 3 ] ; then
-    echo "Bash version less 3. Need 3 or hignter" 
-    exit
-    fi
-else 
-  echo "Didn't check bash version. Need 3 or hignter"
-fi
-
 IFS_def=$IFS
 curDate=`date +"%Y%m%d-%H-%M"`
 
@@ -102,8 +90,9 @@ function changeNamespace {
       fi
       ;;
     'geo')
-      if [[ $prepareFile =~ "/geo/layers/" ]] ; then 
-        if [ ${prepareFile##*.} = 'json' ] ; then 
+      if echo $prepareFile | grep -Eq "/geo/layers/"; then
+#      if [[ $prepareFile =~ "/geo/layers/" ]] ; then 
+        if [ ${prepareFile##*.} = 'json' ] ; then
           cat $prepareFile | \
             sed -r "s|geomap/render/$nsPrev|geomap/render/$nsNew|" |
             sed -r "s|@$nsPrev\"|@$nsNew\"|" |
@@ -111,7 +100,8 @@ function changeNamespace {
             sed -r "s|@$nsPrev/|@$nsNew/|" > "$prepareFile-$curDate"
           local prepared=1
         fi
-      elif [[ $prepareFile =~ "/geo/navigation/" ]] ; then 
+#      elif [[ $prepareFile =~ "/geo/navigation/" ]] ; then 
+      elif echo $prepareFile | grep -Eq "/geo/navigation/" ; then 
         if [ ${prepareFile##*.} = 'json' ] ; then 
           cat $prepareFile | \
             sed -r "s|geomap/render/$nsPrev|geomap/render/$nsNew|" | \
@@ -247,5 +237,3 @@ if [ -f "$appPath/deploy.json" ] ; then
     grep -n "$nsPrev" $appPath/deploy.json
   fi
 fi
-
-

@@ -1,19 +1,5 @@
 #!/bin/bash
 
-# +TODO clean - remove current folder
-# +TODO quiet - show only basic info
-# +TODO set git path from enveronment
-# +TODO check local node version and set docker node ver
-# +TODO start cluster
-# +TODO -y option: all yes
-# +TODO bugfix import data
-# +TODO CHECKOUT iondv engine
-# +TODO Check appName in param
-# +TODO check bash version > 3 (regexp)
-# +TODO change appName and namespace in all metadata
-# +TODO skip checkout - and also TODO set to default branch before
-# +TODO Simple get version with regexp in grep or bash(!)
-# +TODO Checkout to app version (if not start http)
 # TODO Build in docker only, without use local Node.js
 
 # TODO method git, zip, npm
@@ -38,13 +24,17 @@ if ! [ $1 ] ; then
   echo '  -s [value]                  full path to script, go running after install and before build app'
   echo '  -m [value]                  mongo uri, for example: mongodb:27017. Default localhost:27017'
   echo '  -n [value]                  new app namespace and name'
-  echo '  -t                          skip checkout to version in tag. Use default (last) version' 
+  echo '  -t                          skip checkout to version in tag. Use default (last) version'
+  echo '  -v                          save provisional docker image as template version, for example registry:3.0.0'
   echo
   echo 'Environment:'
   echo '  IONDVUrlGitFramework       URL for get framework, default: https://github.com/iondv/framework.git'
+  echo '                             You can also set login and password for use in private repositry, for example'
+  echo '                             https://login:password@git.company-name.com/iondv/framework.git'
   echo '  IONDVUrlGitModules         Base of URL for get modules, default https://github.com/iondv'
   echo '  IONDVUrlGitApp             Base of URL for get app, default https://github.com/iondv'
   echo '  IONDVUrlGitExtApp          Base of URL for get app extension, default https://github.com/iondv'
+
   echo
   echo 'Example:'
   echo '  ./iondv-app -d -l mongodb khs-ticket-discount@1.0.1'
@@ -52,9 +42,609 @@ if ! [ $1 ] ; then
   exit
 fi
 
+##################################
+# Check function                 #
+##################################
+function f_check_node() {
+  local nodeCheck=`node --version`
+  if [ $? -ne 0 ]; then
+    echo "Error check node"
+    exit
+  fi
+  local nodeVersion=`echo $nodeCheck | grep -Po "^v\d+" |  grep -Po "\d+"`
 
-# Process param
-scriptPath=`echo $0 | sed 's/\/iondv-app//'`
+  if [[ $nodeVersion -le 8 || $nodeVersion -ge 10  ]]; then
+    echo "Node major version: $nodeVersion is incompatible. Supported node version between 8.x.x and 10.x.x "
+    exit
+  elif ! [ $quietMode ] ; then echo "Node major version: $nodeVersion";
+  fi
+  local npmCheck=`npm --version`
+  if [ $? -ne 0 ]; then
+    echo "Error check npm "
+    exit
+  fi
+}
+
+function f_check_bash() {
+  local bashVer=`bash --version`
+  local regexp='^GNU bash, version ([0-9]+)\.'
+  if [[ $bashVer =~ $regexp ]] ; then
+    if [ ${BASH_REMATCH[1]} -lt 3 ] ; then
+      echo "Bash version less 3. Need 3 or hignter"
+      exit
+      fi
+  else
+    echo "Didn't check bash version. Need 3 or hignter"
+  fi
+}
+
+function f_check_git() {
+  if ! [ $quietMode ] ; then echo 'Check environment: git, mongo, node, npm, node-gyp, gulp, bower'; fi
+    git --version > /dev/null
+    if [ $? -ne 0 ]; then
+      echo "Error check git"
+      exit
+  fi
+}
+function f_check_npm_dep() {
+  local npmPackCheck=`npm -g list node-gyp gulp bower`
+  if [ $? -ne 0 ]; then
+    echo "Error check npm packages list"
+    exit
+  fi
+  echo $npmPackCheck | grep 'node-gyp'  > /dev/null
+  if [ $? -ne 0 ]; then
+    if [ $yesToAll ] ; then
+      choice="y"
+    else
+      read -p "Error check node-gyp. Install (y/n)?" choice
+    fi
+    case "$choice" in
+      y|Y ) npm install -g node-gyp;;
+      n|N ) echo "node-gyp is requered" exit;;
+      * ) echo "invalid"; exit;;
+    esac
+  fi
+  echo $npmPackCheck | grep 'gulp@4.'  > /dev/null
+  if [ $? -ne 0 ]; then
+    if [ $yesToAll ] ; then
+      choice="y"
+    else
+      read -p "Error check ^gulp@4.0.0. Install (y/n)?" choice
+    fi
+    case "$choice" in
+      y|Y ) npm install -g gulp;;
+      n|N ) echo "^gulp@4.0.0 is requered" exit;;
+      * ) echo "invalid"; exit;;
+    esac
+  fi
+  echo $npmPackCheck | grep 'bower'  > /dev/null
+  if [ $? -ne 0 ]; then
+    if [ $yesToAll ] ; then
+      choice="y"
+    else
+      read -p "Error check bower. Install (y/n)?" choice
+    fi
+    case "$choice" in
+      y|Y ) npm install -g bower;;
+      n|N ) echo "bower is requered" exit;;
+      * ) echo "invalid"; exit;;
+    esac
+  fi
+}
+
+function f_check_mongo () {
+  if [ $mongoLink ] ; then
+    docker exec -it $mongoLink mongo --quiet --eval 'db.runCommand("ping").ok' > /dev/null
+    if [ $? -ne 0 ]; then
+      echo "Error check MongoDb docker container: $mongoLink"
+      exit
+    else
+      checkMongo=`curl --silent $mongodbUri | grep "MongoDB"` > /dev/null
+      if [ $? -ne 0 ]; then
+        echo "Error check MongoDb: $mongodbUri"
+      fi
+    fi
+ fi
+}
+
+####################################
+# Version
+#################################
+function f_get_framework_ver() {
+  packagePath=$1
+  local IFS_def=$IFS
+  if grep -Eq '"engines"\s*:\s*{' $packagePath && ! grep -Eq '"engines"\s*:\s*{[\s\n]*}' $packagePath; then
+    engines=`sed -n -r '/"engines":\s+\{/,/\}/{ /"engines":\s+\{/d; /}/d; p; }' $packagePath`
+    if ! [ ${#engines[@]} = 0 ] ; then
+      if ! [ $quietMode ] ; then echo "Engine list: $engines"; fi
+      enginelist=`echo $engines | tr -d [:space:] | tr -d '"' | tr ',' '\n'`
+      for i in ${enginelist[@]}
+      do
+        IFS=':' tmp=($i)
+        if [ ${tmp[0]} = "ion" ]; then
+          frameworkVer=${tmp[1]}
+        fi
+        IFS=$IFS_def
+      done
+    fi
+  fi
+}
+
+##################################
+# Create ini and build files      #
+##################################
+function f_create_setup_ini() {
+  if [ $dockerUse ]; then configPath=""; else configPath="/config"; fi
+  echo "auth.denyTop=false"                                                                   > "$frameworkPath$configPath/setup.ini"
+  echo "auth.registration=false"                                                              >> "$frameworkPath$configPath/setup.ini"
+  echo "db.uri=mongodb://$mongodbUri/$appName"                                                >> "$frameworkPath$configPath/setup.ini"
+  echo "server.ports[]=8888"                                                                  >> "$frameworkPath$configPath/setup.ini"
+  echo "module.default=registry"                                                              >> "$frameworkPath$configPath/setup.ini"
+  echo "fs.storageRoot=./files"                                                               >> "$frameworkPath$configPath/setup.ini"
+  echo "fs.urlBase=/files"                                                                    >> "$frameworkPath$configPath/setup.ini"
+  echo "deploy.mode=db"                                                                       >> "$frameworkPath$configPath/setup.ini"
+}
+
+function f_create_init_sh() {
+  echo "node bin/import --src ./applications/$appName --ns $appName"                          > "$frameworkPath/init.sh"
+  echo "node bin/setup $appName --reset"                                                      >> "$frameworkPath/init.sh"
+  for i in ${applist[@]}
+  do
+    IFS=':' tmp=($i)
+    if ! [ -d "$frameworkPath/applications/${tmp[0]}" ]; then
+      echo "node bin/setup ${tmp[0]}"                                                         >> "$frameworkPath/init.sh"
+    fi
+  done
+  if [ $importData ] ; then echo "node bin/import-data --src ./applications/$appName/data --ns $appName" >> "$frameworkPath/init.sh"; fi
+  echo "node bin/adduser --name demo --pwd ion-demo"                                          >> "$frameworkPath/init.sh"
+  echo "node bin/acl --u demo@local --role admin --p full"                                    >> "$frameworkPath/init.sh"
+  if [ $importAcl ] ; then echo "node bin/acl --d ./applications/$appName/acl"                >> "$frameworkPath/init.sh"; fi
+  if [ $startCluster ] ; then
+    echo "export WORKER_COUNT=$startCluster"                                                  >> "$frameworkPath/init.sh"
+    echo "node bin/cluster"                                                                   >> "$frameworkPath/init.sh"
+  else
+    echo "node bin/www"                                                                       >> "$frameworkPath/init.sh"
+  fi
+}
+
+function  f_dockerignore() {
+  echo "**/.eslintrc.yml"                                                                     > "$frameworkPath/.dockerignore"
+  echo ".eslinignore\n.editorconfig\n.tern-project"                                           >> "$frameworkPath/.dockerignore"
+  echo ".gitignore\n.git/**\n**/.git/**"                                                      >> "$frameworkPath/.dockerignore"
+  echo ".npmignore\n**/package-lock.json"                                                     >> "$frameworkPath/.dockerignore"
+  echo "/config/config.json.devel\n/config/config.json.prod\n/config/setup.ini.example"       >> "$frameworkPath/.dockerignore"
+  echo "/docs/**\n**/docs/**\n/changelog*"                                                    >> "$frameworkPath/.dockerignore"
+  echo "/log/**\n/test/**"                                                                    >> "$frameworkPath/.dockerignore"
+  echo "/view/default/vendor"                                                                 >> "$frameworkPath/.dockerignore"
+  echo "/view/default/node_modules"                                                           >> "$frameworkPath/.dockerignore"
+  echo "/modules/*/view/default/vendor/**"                                                    >> "$frameworkPath/.dockerignore"
+  echo "/modules/*/view/default/node_modules/**"                                              >> "$frameworkPath/.dockerignore"
+  echo "/applications/*/themes/*/vendor/**"                                                   >> "$frameworkPath/.dockerignore"
+  echo "/applications/*/themes/*/node_modules/**"                                             >> "$frameworkPath/.dockerignore"
+  echo "./Dockerfile"                                                                         >> "$frameworkPath/.dockerignore"
+}
+
+function f_dockerfile() {
+#  echo "FROM node:10 as iondv-base"                                                           > "$frameworkPath/Dockerfile-base"
+#  echo "FROM node:10 as iondv-base"                                                           > "$frameworkPath/Dockerfile-base"
+#  echo "RUN apt-get update && apt-get upgrade -y && apt-get install -y git"                   >> "$frameworkPath/Dockerfile-base"
+#  echo                                                                                        >> "$frameworkPath/Dockerfile-base"
+#  echo
+#  docker image build -t iondv-base:latest -f "$frameworkPath/Dockerfile-base" "$frameworkPath/."
+
+#  if [ $dockerVersionSave ]; then
+#    postfix="-$appName"
+#  fi
+
+  postfix="-$appName"
+  appNameAndVer="$appName:latest"
+  # Build app's docker image
+  echo "FROM alpine/git as iondv-raw-$appName"                                                > "$frameworkPath/Dockerfile$postfix"
+  if [ $appGetVersion ] ; then
+    echo "LABEL version=\"$appGetVersion\""                                                   >> "$frameworkPath/Dockerfile$postfix"
+  fi
+  echo "WORKDIR /var/www/applications"                                                        >> "$frameworkPath/Dockerfile$postfix"
+  echo "RUN git clone --quiet $appGitLink $appName"                                           >> "$frameworkPath/Dockerfile$postfix"
+  if [ $appGetVersion ] ; then
+    echo "WORKDIR var/www/applications/$appName"                                              >> "$frameworkPath/Dockerfile$postfix"
+    echo "RUN git checkout \"tags/$appGetVersion\""                                           >> "$frameworkPath/Dockerfile$postfix"
+    appNameAndVer="$appName:$appGetVersion"
+  fi
+  if [ $newAppName ] ; then
+    cp $scriptPath/change-namespace.sh $frameworkPath/change-namespace.sh
+    echo "COPY ./change-namespace.sh /var/www/applications/change-namespace.sh"               >> "$frameworkPath/Dockerfile$postfix"
+    echo "RUN sh /var/www/applications/change-namespace.sh $quietMode /var/www/applications/$appName $prevAppName $newAppName" \
+                                                                                              >> "$frameworkPath/Dockerfile$postfix"
+  fi
+  docker image build -t "iondv-raw-$appNameAndVer" -f "$frameworkPath/Dockerfile$postfix" "$frameworkPath/."
+  docker run --rm --entrypoint="" "iondv-raw-$appNameAndVer" cat "/var/www/applications/$appName/package.json" > $frameworkPath/package.json
+
+  postfix=""
+  # Build framework's docker image
+  if [ $dockerVersionSave ]; then
+    postfix="-framework"
+    echo "FROM alpine/git as iondv-framework"                                                 > "$frameworkPath/Dockerfile$postfix"
+  else
+    echo "FROM alpine/git as iondv-framework"                                                 >> "$frameworkPath/Dockerfile$postfix"
+  fi
+  if ! [ $skipTagMode ] ; then
+    f_get_framework_ver $frameworkPath/package.json
+    if [ $frameworkVer ]; then
+      if ! [ $quietMode ] ; then echo "Use ion engine: $i"; fi
+      echo "LABEL version=\"$frameworkVer\""                                                  >> "$frameworkPath/Dockerfile$postfix"
+    fi
+  fi
+  echo "WORKDIR /var"                                                                         >> "$frameworkPath/Dockerfile$postfix"
+  echo "RUN git clone --quiet \"$IONDVUrlGitFramework\" \"www\""                              >> "$frameworkPath/Dockerfile$postfix"
+  if ! [ $skipTagMode ] ; then
+    echo "WORKDIR /var/www"                                                                   >> "$frameworkPath/Dockerfile$postfix"
+    if [ $frameworkVer ]; then
+      echo "RUN git checkout \"tags/$frameworkVer\""                                          >> "$frameworkPath/Dockerfile$postfix"
+    fi
+    if ! [ $quietMode ] ; then echo "Use ion engine: $frameworkVer"; fi
+    if [ $dockerVersionSave ]; then
+      if [ $frameworkVer ]; then
+        docker image build -t "iondv-framework:$frameworkVer" -f "$frameworkPath/Dockerfile$postfix" "$frameworkPath/."
+      else
+        docker image build -t "iondv-framework:latest" -f "$frameworkPath/Dockerfile$postfix" "$frameworkPath/."
+      fi
+    fi
+  fi
+
+  # ionMetaDependencies
+  IFS_def=$IFS
+  if grep -q '"ionMetaDependencies"\s*:\s*{' $frameworkPath/package.json && ! grep -q '"ionMetaDependencies"\s*:\s*{[\s\n]*}' $frameworkPath/package.json; then
+    apps=`sed -n -r '/"ionMetaDependencies":\s+\{/,/\}/{ /"ionMetaDependencies":\s+\{/d; /}/d; p; }' $frameworkPath/package.json`
+    if ! [ $quietMode ] ; then echo "Addition apps list: $apps"; fi
+    if ! [ ${#apps[@]} = 0 ] ; then
+      applist=`echo $apps | tr -d [:space:] | tr -d '"' | tr ',' '\n'`
+      for i in ${applist[@]}
+      do
+        if ! [ $quietMode ] ; then echo "Docker for ext-app: $i"; fi
+        IFS=':' tmp=($i)
+        if [ $dockerVersionSave ]; then
+          postfix="-${tmp[0]}"
+          echo "FROM alpine/git as iondv-${tmp[0]}"                                            > "$frameworkPath/Dockerfile$postfix"
+        else
+          echo "FROM alpine/git as iondv-${tmp[0]}"                                            >> "$frameworkPath/Dockerfile$postfix"
+        fi
+        if ! [ $skipTagMode ] ; then
+          echo "LABEL version=\"${tmp[1]}\""                                                   >> "$frameworkPath/Dockerfile$postfix"
+        fi
+        echo "WORKDIR /var/www/applications"                                                   >> "$frameworkPath/Dockerfile$postfix"
+        echo "RUN git clone --quiet \"$IONDVUrlGitExtApp/${tmp[0]}.git\""                      >> "$frameworkPath/Dockerfile$postfix"
+        if ! [ $skipTagMode ] ; then
+          echo "WORKDIR /var/www/applications/${tmp[0]}"                                       >> "$frameworkPath/Dockerfile$postfix"
+          echo "RUN git checkout \"tags/${tmp[1]}\""                                           >> "$frameworkPath/Dockerfile$postfix"
+          if [ $dockerVersionSave ]; then
+              docker image build -t "iondv-${tmp[0]}:${tmp[1]}" -f "$frameworkPath/Dockerfile$postfix" "$frameworkPath/."
+          fi
+        fi
+        IFS=$IFS_def
+      done
+    fi
+  fi
+
+
+  # ionModulesDependencies
+  if grep -Eq '"ionModulesDependencies"\s*:\s*{' $frameworkPath/package.json && ! grep -Eq '"ionModulesDependencies"\s*:\s*{[\s\n]*}' $frameworkPath/package.json; then
+    modules=`sed -n -r '/"ionModulesDependencies":\s+\{/,/\}/{ /"ionModulesDependencies":\s+\{/d; /}/d; p; }' $frameworkPath/package.json`
+    if ! [ $quietMode ] ; then echo Modules list: $modules; fi
+    if ! [ ${#modules[@]} = 0 ] ; then
+      modlist=`echo $modules | tr -d [:space:] | tr -d '"' | tr ',' '\n'`
+      for i in ${modlist[@]}
+      do
+        if ! [ $quietMode ] ; then echo "Docker for module: $i"; fi
+        IFS=':' tmp=($i)
+        if [ $dockerVersionSave ]; then
+          postfix="-${tmp[0]}"
+          echo "FROM alpine/git as iondv-${tmp[0]}"                                           > "$frameworkPath/Dockerfile$postfix"
+        else
+          echo "FROM alpine/git as iondv-${tmp[0]}"                                           >> "$frameworkPath/Dockerfile$postfix"
+        fi
+        if ! [ $skipTagMode ] ; then
+          echo "LABEL version=\"${tmp[1]}\""                                                  >> "$frameworkPath/Dockerfile$postfix"
+        fi
+        echo "WORKDIR /var/www/modules"                                                       >> "$frameworkPath/Dockerfile$postfix"
+        echo "RUN git clone --quiet \"$IONDVUrlGitModules/${tmp[0]}.git\""                    >> "$frameworkPath/Dockerfile$postfix"
+        if ! [ $skipTagMode ] ; then
+          echo "WORKDIR /var/www/modules/${tmp[0]}"                                           >> "$frameworkPath/Dockerfile$postfix"
+          echo "RUN git checkout \"tags/${tmp[1]}\""                                          >> "$frameworkPath/Dockerfile$postfix"
+          if [ $dockerVersionSave ]; then
+              docker image build -t "iondv-${tmp[0]}:${tmp[1]}" -f "$frameworkPath/Dockerfile$postfix" "$frameworkPath/."
+          fi
+        fi
+        IFS=$IFS_def
+      done
+    fi
+  fi
+
+exit
+
+  echo "FROM iondv-base as iondv-framework"                                                   > "$frameworkPath/Dockerfile"
+  echo "WORKDIR /var/"                                                                        >> "$frameworkPath/Dockerfile"
+  echo "RUN git clone --quiet $IONDVUrlGitFramework www"                                      >> "$frameworkPath/Dockerfile"
+  echo "WORKDIR /var/www/applications"                                                        >> "$frameworkPath/Dockerfile"
+  echo "RUN git clone --quiet $appGitLink $appName"                                           >> "$frameworkPath/Dockerfile"
+  if [ $appGetVersion ] ; then
+    echo "WORKDIR /var/www/applications"                                                      >> "$frameworkPath/Dockerfile"
+    echo "RUN git checkout \"tags/$appGetVersion\""                                           >> "$frameworkPath/Dockerfile"
+  fi
+  echo "RUN grep -E '\"version\"\s*:\s*\"' $frameworkPath/applications/$appName/package.json | grep -o -E '[0-9\.]+' > $frameworkPath/iondv-app-version.tmp" >> "$frameworkPath/Dockerfile"
+  echo "WORKDIR /var/www"                                                                     >> "$frameworkPath/Dockerfile"
+  #COPY . .\n\
+  echo "EXPOSE 8888"                                                                          >> "$frameworkPath/Dockerfile"
+  echo "ENV NODE_PATH /var/www"                                                               >> "$frameworkPath/Dockerfile"
+  if [ $startCluster ] ; then echo "ENV WORKER_COUNT $startCluster"                           >> "$frameworkPath/Dockerfile"; fi
+  #CMD [\"bash\", \"init.sh\"]
+  echo "CMD [\"ls\", \"/var/www\"]"                                                           >> "$frameworkPath/Dockerfile"
+
+#  echo "WORKDIR /var/www" >> "$frameworkPath/Dockerfile"
+#  echo "COPY . ." >> "$frameworkPath/Dockerfile"
+#  echo "EXPOSE 8888" >> "$frameworkPath/Dockerfile"
+#  echo "ENV NODE_PATH /var/www" >> "$frameworkPath/Dockerfile"
+
+#  echo "CMD [\"bash\", \"init.sh\"]" >> "$frameworkPath/Dockerfile"
+}
+
+
+
+##################################
+# Git install function           #
+##################################
+function f_install_git () {
+  if ! [ -d $frameworkPath ]; then
+    if ! [ $quietMode ] ; then echo "Git: clone IONDV. framework"; fi
+    git clone --quiet "$IONDVUrlGitFramework" "$appName"
+    if [ $? -ne 0 ]; then echo "Didn't clone $IONDVUrlGitFramework"; exit; fi
+  else
+    cd $frameworkPath
+    if ! [ $quietMode ] ; then echo "Git: Stash and update IONDV. framework"; fi
+    git stash
+    git pull
+  fi
+
+  if ! [ -d "$frameworkPath/applications" ]; then
+    mkdir "$frameworkPath/applications"
+  fi
+
+  if [ -d "$frameworkPath/applications/$appName" ]; then
+    appVer=`grep -E '\"version\"\s*:\s*\"' $frameworkPath/applications/$appName/package.json | grep -o -E '[0-9\.]+'`
+    git stash
+    git pull
+  else
+    cd "$frameworkPath/applications"
+    if ! [ $quietMode ] ; then echo "Git: clone IONDV. app - $appName from $appGitLink"; fi
+    git clone --quiet "$appGitLink" $appName
+    if [ $? -ne 0 ]; then echo "Didn't clone $appGitLink"; exit; fi
+  fi
+
+
+  if [ $appGetVersion ] ; then
+    git checkout "tags/$appGetVersion"
+    appVer=`grep -E '\"version\"\s*:\s*\"' $frameworkPath/applications/$appName/package.json | grep -o -E '[0-9\.]+'`
+    if [[ $appGetVersion != $appVer ]] ; then
+      echo "App version is different. Requred $appGetVersion, current $appVer."
+      exit
+    fi
+  else
+    appVer=`grep -E '\"version\"\s*:\s*\"' $frameworkPath/applications/$appName/package.json | grep -o -E '[0-9\.]+'`
+  fi
+  if ! [ $quietMode ] ; then echo "Preparing app version: $appVer"; fi
+
+  # Change app name and namespace
+  if [ $newAppName ] ; then
+    cd $startDir
+    $scriptPath/change-namespace.sh $quietMode "$frameworkPath/applications/$appName" $prevAppName $newAppName
+  fi
+
+  # package.json dependencies
+  IFS_def=$IFS
+  # engines - iondv framework version
+  if ! [ $skipTagMode ] ; then
+    f_get_framework_ver $frameworkPath/applications/$appName/package.json
+  fi
+  if [ $frameworkVer ]; then
+    if ! [ $quietMode ] ; then echo "Use ion engine: $i"; fi
+    cd "$frameworkPath"
+    git checkout tags/$frameworkVer
+  fi
+#  if ! [ $skipTagMode ] ; then
+#    grep '"engines"\s*:\s*{' $frameworkPath/applications/$appName/package.json > /dev/null # Check empty
+#    if [ $? -eq 0 ]; then
+#    grep '"engines"\s*:\s*{[\s\n]*}' $frameworkPath/applications/$appName/package.json > /dev/null
+#    fi
+#    if [ $? -ne 0 ]; then
+#      engines=`sed -n -r '/"engines":\s+\{/,/\}/{ /"engines":\s+\{/d; /}/d; p; }' $frameworkPath/applications/$appName/package.json`
+#      if ! [ ${#engines[@]} = 0 ] ; then
+#        if ! [ $quietMode ] ; then echo "Engine list: $engines"; fi
+#        enginelist=`echo $engines | tr -d [:space:] | tr -d '"' | tr ',' '\n'`
+#        for i in ${enginelist[@]}
+#        do
+#          IFS=':' tmp=($i)
+#          if [ ${tmp[0]} = "ion" ]; then
+#            cd "$frameworkPath"
+#            git checkout tags/${tmp[1]}
+#            if ! [ $quietMode ] ; then echo "Use ion engine: $i"; fi
+#          fi
+#          IFS=$IFS_def
+#        done
+#      fi
+#    fi
+#  fi
+
+
+  # ionMetaDependencies
+  grep '"ionMetaDependencies"\s*:\s*{' $frameworkPath/applications/$appName/package.json > /dev/null # Check empty
+  if [ $? -eq 0 ]; then
+  grep '"ionMetaDependencies"\s*:\s*{[\s\n]*}' $frameworkPath/applications/$appName/package.json > /dev/null
+  fi
+  if [ $? -ne 0 ]; then
+    apps=`sed -n -r '/"ionMetaDependencies":\s+\{/,/\}/{ /"ionMetaDependencies":\s+\{/d; /}/d; p; }' $frameworkPath/applications/$appName/package.json`
+    if ! [ ${#apps[@]} = 0 ] ; then
+      if ! [ $quietMode ] ; then echo "Addition apps list: $apps"; fi
+      applist=`echo $apps | tr -d [:space:] | tr -d '"' | tr ',' '\n'`
+
+      for i in ${applist[@]}
+      do
+        if ! [ $quietMode ] ; then echo "Inslall ext-app: $i"; fi
+        IFS=':' tmp=($i)
+        if ! [ -d "$frameworkPath/applications/${tmp[0]}" ]; then
+          cd $frameworkPath/applications
+          git clone --quiet "$IONDVUrlGitExtApp/${tmp[0]}.git"
+          if [ $? -ne 0 ]; then echo "Didn't clone $IONDVUrlGitExtApp/${tmp[0]}.git"; exit; fi
+        fi
+        cd "$frameworkPath/applications/${tmp[0]}"
+        git stash
+        git pull
+        if ! [ $skipTagMode ] ; then git checkout tags/${tmp[1]}; fi
+        IFS=$IFS_def
+      done
+    fi
+  fi
+
+  if ! [ -d $frameworkPath/modules ]; then
+    mkdir $frameworkPath/modules
+  fi
+
+  # ionModulesDependencies
+  grep '"ionModulesDependencies"\s*:\s*{' $frameworkPath/applications/$appName/package.json > /dev/null # Check empty
+  if [ $? -eq 0 ]; then
+  grep '"ionModulesDependencies"\s*:\s*{[\s\n]*}' $frameworkPath/applications/$appName/package.json > /dev/null
+  fi
+  if [ $? -ne 0 ]; then
+    modules=`sed -n -r '/"ionModulesDependencies":\s+\{/,/\}/{ /"ionModulesDependencies":\s+\{/d; /}/d; p; }' $frameworkPath/applications/$appName/package.json`
+    echo Modules list: $modules
+    if ! [ ${#modules[@]} = 0 ] ; then
+      modlist=`echo $modules | tr -d [:space:] | tr -d '"' | tr ',' '\n'`
+      for i in ${modlist[@]}
+      do
+        if ! [ $quietMode ] ; then echo "Install module: $i"; fi
+        IFS=':' tmp=($i)
+        if ! [ -d "$frameworkPath/modules/${tmp[0]}" ]; then
+          cd $frameworkPath/modules
+          git clone --quiet "$IONDVUrlGitModules/${tmp[0]}.git"
+          if [ $? -ne 0 ]; then echo "Didn't clone $IONDVUrlGitModules/${tmp[0]}.git"; exit; fi
+        fi
+        cd "$frameworkPath/modules/${tmp[0]}"
+        git stash
+        git pull
+        if ! [ $skipTagMode ] ; then git checkout tags/${tmp[1]}; fi
+        IFS=$IFS_def
+      done
+    fi
+  fi
+
+  if ! [ $quietMode ] ; then echo "Build IONDV application: $appName"; fi
+  cd $frameworkPath
+  export NODE_PATH=$frameworkPath
+
+  f_create_setup_ini
+  f_create_init_sh
+
+  cd $frameworkPath
+  if [ $postInstScript ] ; then
+    if ! [ $quietMode ] ; then echo "Running postInstall script $postInstScript, before app build"; fi
+    $postInstScript
+  fi
+
+  #npm -no-package-lock install gulp@"^4.0.0" gulp-clean-css@"~4.0.0" gulp-jsmin@"~0.1.5" gulp-less@"~4.0.1" gulp-rename@"~1.4.0"
+  npm install
+
+  gulp build
+  if [ $? -ne 0 ]; then
+    echo "Build app error. Exit"
+    exit
+  fi
+
+  rm -r -f ./node_modules
+
+  if ! [ $quietMode ] ; then echo 'Install npm production'; fi
+  npm ci --only=production
+
+  echo "Test user. Login: demo, password: ion-demo"
+  bash ./init.sh
+}
+
+##################################
+# Docker install function        #
+##################################
+function f_install_docker() {
+  dockerName=$appName
+  imageName=$dockerName
+  echo "Create docker image: $imageName and run docker name:  $dockerName"
+  # TODO get imageVer and remove dockerImage after git clone app. Maybe check docker image:ver before remove?
+  echo "Will be stop container and remove $dockerName, remove docker image: $imageName:latest and $imageName:$imageVer"
+  echo "Also will be drop db: $dbName"
+  if [ $yesToAll ] ; then
+    choice="y"
+  else
+    read -p "Continue (y/n)?" choice
+  fi
+  case "$choice" in
+    y|Y )
+      docker stop $dockerName
+      docker rm $dockerName
+      docker image rmi $imageName:latest
+#      docker image rmi $imageName:$appVer
+      docker exec -it $mongoLink mongo $dbName --quiet --eval "db.dropDatabase();";;
+    n|N );;
+    * ) echo "invalid";;
+  esac
+
+  if ! [ -d $frameworkPath ]; then mkdir $frameworkPath; fi
+  f_create_setup_ini
+  f_create_init_sh
+  f_dockerfile
+  f_dockerignore
+
+exit
+
+  imageVer=`grep -E '\"version\"\s*:\s*\"' $frameworkPath/applications/$appName//package.json | grep -o -E '[0-9\.]+'`
+  if ! [ $quietMode ] ; then echo "Build docker version: $imageVer"; fi
+  cd $frameworkPath
+  docker image build -t $imageName:$imageVer .
+  cd ..
+  docker tag $imageName:$imageVer $imageName:latest
+  if ! [ $quietMode ] ; then echo "Build docker image: $imageName:$imageVer and $imageName:latest"; fi
+  if [ $mongoLink ] ; then
+    if ! [ $quietMode ] ; then echo "Running docker container: $dockerName, linked to $mongoLink"; fi
+    docker run -d -p 8888:8888 --name $dockerName --link $mongoLink $imageName
+  else   # TODO для докера нужен какой-то проброс портов на host. И параметр - запускать или нет.
+    if ! [ $quietMode ] ; then echo "Running docker container: $dockerName"; fi
+    docker run -d -p 8888:8888 --name $dockerName $imageName
+  fi
+  sleep 60
+  if ! [ $quietMode ] ; then docker logs $dockerName; fi
+  curl localhost:8888 # TODO проверка результата
+  if [ $yesToAll ] ; then
+    echo "Save docker container to file"
+    choice="y"
+  else
+    read -p "\nSave docker container to file at $startDie (y/n)?" choice
+  fi
+  case "$choice" in
+    y|Y )
+      docker save $imageName:latest -o $startDir/$dockerName.docker-image.tar
+      echo "Save $startDir/$dockerName.docker-image.tar"
+      ;;
+    n|N );;
+    * ) echo "invalid";;
+  esac
+}
+
+##################################
+# START SCRIPT                   #
+##################################
+
+# Process param and path
+startDir=`pwd`
+scriptName=${0##*/}
+scriptPath=${0%/$scriptName}
+scriptPath=`cd $scriptPath && pwd && cd $startDir`
+
+#source $scriptPath/f_app
 
 while [ -n "$1" ]
 do
@@ -69,6 +659,7 @@ case "$1" in
   -y) yesToAll=1; paramInfo="$paramInfo\nFound yes to all option";;
   -q) quietMode=1; paramInfo="$paramInfo\nFound the quiet data option";;
   -t) skipTagMode=1; paramInfo="$paramInfo\nFound the skip tag checkout option";;
+  -v) dockerVersionSave=1; paramInfo="$paramInfo\nFound the save provisional docker image as template version option";;
   -l) mongoLink="$2"; paramInfo="$paramInfo\nFound the docker mongo link option"
   shift ;;
   -m) mongodbUri="$2"; paramInfo="$paramInfo\nFound the mongodb option"
@@ -94,7 +685,7 @@ if ! [ $appName ] ; then
   exit
 fi
 
-#Default value
+# Default value
 if ! [ $mongodbUri ] ; then  mongodbUri="localhost:27017"; fi
 if ! [ $IONDVUrlGitFramework ] ; then IONDVUrlGitFramework=https://github.com/iondv/framework.git; fi
 if ! [ $IONDVUrlGitModules ] ; then IONDVUrlGitModules=https://github.com/iondv; fi
@@ -113,14 +704,15 @@ else
   appGitLink=$IONDVUrlGitApp/$appName.git
 fi
 
-
 if [ $newAppName ] ; then
   if ! [ $appGitLink ] ; then appGitLink=$IONDVUrlGitApp/$appName.git ; fi
   prevAppName=$appName
   appName=$newAppName
 fi
 
-if ! [ $quietMode ] ; then 
+dbName=$appName
+
+if ! [ $quietMode ] ; then
   echo -e "$paramInfo";
   echo "Framework URL: $IONDVUrlGitFramework"
   echo "Module base URL: $IONDVUrlGitModules"
@@ -142,386 +734,41 @@ if [ $mongoLink ] ; then
 fi
 
 # Check
-if ! [ $skipCheck ] ; then 
-  # Bash
-  bashVer=`bash --version`
-  regexp='^GNU bash, version ([0-9]+)\.'
-  if [[ $bashVer =~ $regexp ]] ; then
-    if [ ${BASH_REMATCH[1]} -lt 3 ] ; then
-      echo "Bash version less 3. Need 3 or hignter" 
-      exit
-      fi
-  else 
-    echo "Didn't check bash version. Need 3 or hignter"
+if ! [ $skipCheck ] ; then
+  if ! [ $dockerUse ] ; then
+    f_check_git
+    f_check_node
+    f_check_npm_dep
   fi
-  # Check git
-  if ! [ $quietMode ] ; then echo 'Check environment: git, mongo, node, npm, node-gyp, gulp, bower'; fi
-  git --version > /dev/null
-  if [ $? -ne 0 ]; then
-    echo "Error check git"
-    exit
-  fi
-  # Check mongonpm -g list node-gyp gulp bower
-  if [ $mongoLink ] ; then
-    docker exec -it $mongoLink mongo --quiet --eval 'db.runCommand("ping").ok' > /dev/null
-    if [ $? -ne 0 ]; then
-      echo "Error check MongoDb docker container: $mongoLink"
-      exit
-    fi
-  else
-    checkMongo=`curl --silent $mongodbUri | grep "MongoDB"` > /dev/null
-    if [ $? -ne 0 ]; then
-      echo "Error check MongoDb: $mongodbUri"
-    fi
-  fi
-  # Check node, npm, node-gyp, gulp, bower
-  nodeCheck=`node --version`
-  if [ $? -ne 0 ]; then
-    echo "Error check node"
-    exit
-  fi
-  nodeVersion=`echo $nodeCheck | grep -Po "^v\d+" |  grep -Po "\d+"`
-  if ! [ $quietMode ] ; then echo "Node major version: $nodeVersion"; fi
-  npmCheck=`npm --version`
-  if [ $? -ne 0 ]; then
-    echo "Error check npm "
-    exit
-  fi
-  npmPackCheck=`npm -g list node-gyp gulp bower`
-  if [ $? -ne 0 ]; then
-    echo "Error check npm packages list"
-    exit
-  fi
-  echo $npmPackCheck | grep 'node-gyp'  > /dev/null
-  if [ $? -ne 0 ]; then
-    read -p "Error check node-gyp. Install (y/n)?" choice
-    case "$choice" in 
-      y|Y ) npm install -g node-gyp;;
-      n|N ) echo "node-gyp is requered" exit;;
-      * ) echo "invalid"; exit;;
-    esac
-  fi
-  echo $npmPackCheck | grep 'gulp@4.'  > /dev/null
-  if [ $? -ne 0 ]; then
-    read -p "Error check ^gulp@4.0.0. Install (y/n)?" choice
-    case "$choice" in 
-      y|Y ) npm install -g gulp;;
-      n|N ) echo "^gulp@4.0.0 is requered" exit;;
-      * ) echo "invalid"; exit;;
-    esac
-  fi
-  echo $npmPackCheck | grep 'bower'  > /dev/null
-  if [ $? -ne 0 ]; then
-    read -p "Error check bower. Install (y/n)?" choice
-    case "$choice" in 
-      y|Y ) npm install -g bower;;
-      n|N ) echo "bower is requered" exit;;
-      * ) echo "invalid"; exit;;
-    esac
-  fi
-  if ! [ $quietMode ] ; then echo 'Success.'; fi
-else 
-  nodeCheck=`node --version`
-  if [ $? -ne 0 ]; then
-    echo "Error get local node version. Set default 10"
-    nodeVersion="10"
-  else 
-    nodeVersion=`echo $nodeCheck | grep -Po "^v\d+" |  grep -Po "\d+"`
-  fi
+  f_check_mongo
+  if ! [ $quietMode ] ; then echo 'Check success.'; fi
 fi
 
-startDir=`pwd`
-dockerName=$appName
-imageName=$dockerName
-dbName=$appName
+# Set path
 if ! [ $installDir ] ; then
   echo 'Use current dir for workspace'
   installDir=$startDir
 fi
 frameworkPath=$installDir/$appName
 
-
 if [ $removeAppFolder ] ; then
   echo "Remove $frameworkPath"
   rm -r -f $frameworkPath
 fi
 
-
-if ! [ $quietMode ] ; then 
+if ! [ $quietMode ] ; then
   echo "Insalling app:          $appName"
   echo "  workspace dir:        $installDir"
   echo "  framework path:       $frameworkPath"
-  if [ $dockerUse ] ; then echo "  create docker image:  $imageName"; echo "  run docker name:      $dockerName"; fi
   if [ $postInstScript ] ; then echo "  postinstall script:   $postInstScript"; fi
 fi
-
 cd $installDir
 
-if ! [ -d $frameworkPath ]; then
-  if ! [ $quietMode ] ; then echo "Git: clone IONDV. framework"; fi
-  git clone --quiet "$IONDVUrlGitFramework" "$appName"
-  if [ $? -ne 0 ]; then echo "Didn't clone $IONDVUrlGitFramework"; exit; fi
-else
-  cd $frameworkPath
-  if ! [ $quietMode ] ; then echo "Git: Stash and update IONDV. framework"; fi
-  git stash
-  git pull
-fi
-
-if ! [ -d "$frameworkPath/applications" ]; then 
-  mkdir "$frameworkPath/applications" 
-fi
-
-if [ -d "$frameworkPath/applications/$appName" ]; then
-  appVer=`grep -E '\"version\"\s*:\s*\"' $frameworkPath/applications/$appName/package.json | grep -o -E '[0-9\.]+'`
-  git stash
-  git pull
-else
-  cd "$frameworkPath/applications"
-  if ! [ $quietMode ] ; then echo "Git: clone IONDV. app - $appName from $appGitLink"; fi
-  git clone --quiet "$appGitLink" $appName
-  if [ $? -ne 0 ]; then echo "Didn't clone $appGitLink"; exit; fi
-fi
-
-
-# Change app name and namespace
-if [ $newAppName ] ; then
-  cd $startDir
-  $scriptPath/change-namespace.sh $quietMode "$frameworkPath/applications/$appName" $prevAppName $newAppName
-fi
-
-if [ $dockerUse ] ; then  
-  echo "Will be stop container and remove $dockerName, remove docker image: $imageName:latest and $imageName:$imageVer"
-  echo "Also will be drop db: $dbName"
-  if [ $yesToAll ] ; then
-    choice="y"
-  else
-    read -p "Continue (y/n)?" choice
-  fi
-  case "$choice" in
-    y|Y ) 
-      docker stop $dockerName
-      docker rm $dockerName
-      docker image rmi $imageName:latest
-      docker image rmi $imageName:$appVer
-      docker exec -it $mongoLink mongo $dbName --quiet --eval "db.dropDatabase();";;
-    n|N );;
-    * ) echo "invalid";;
-  esac
-fi
-
-appVer=`grep -E '\"version\"\s*:\s*\"' $frameworkPath/applications/$appName//package.json | grep -o -E '[0-9\.]+'`
-if [ $appGetVersion ] ; then
-  git checkout tags/${tmp[1]}
-  if [[ $appGetVersion != $appVer ]] ; then 
-    echo "App version is different. Requred $appGetVersion, current $appVer."
-    exit
-  fi
-fi
-if ! [ $quietMode ] ; then echo "Preparing app version: $appVer"; fi
-
-# package.json dependencies 
-IFS_def=$IFS
-# engines - iondv framework version
-if ! [ $skipTagMode ] ; then
-  grep '"engines"\s*:\s*{' $frameworkPath/applications/$appName/package.json > /dev/null # Check empty
-  if [ $? -eq 0 ]; then 
-  grep '"engines"\s*:\s*{[\s\n]*}' $frameworkPath/applications/$appName/package.json > /dev/null
-  fi
-  if [ $? -ne 0 ]; then
-    engines=`sed -n -r '/"engines":\s+\{/,/\}/{ /"engines":\s+\{/d; /}/d; p; }' $frameworkPath/applications/$appName/package.json`
-    if ! [ ${#engines[@]} = 0 ] ; then 
-      if ! [ $quietMode ] ; then echo "Engine list: $engines"; fi
-      enginelist=`echo $engines | tr -d [:space:] | tr -d '"' | tr ',' '\n'`
-      for i in ${enginelist[@]}
-      do
-        IFS=':' tmp=($i)
-        if [ ${tmp[0]} = "ion" ]; then
-          cd "$frameworkPath"
-          git checkout tags/${tmp[1]}
-          if ! [ $quietMode ] ; then echo "Use ion engine: $i"; fi
-        fi
-        IFS=$IFS_def
-      done
-    fi
-  fi
-fi
-
-# ionMetaDependencies
-grep '"ionMetaDependencies"\s*:\s*{' $frameworkPath/applications/$appName/package.json > /dev/null # Check empty
-if [ $? -eq 0 ]; then
-grep '"ionMetaDependencies"\s*:\s*{[\s\n]*}' $frameworkPath/applications/$appName/package.json > /dev/null
-fi
-if [ $? -ne 0 ]; then
-  apps=`sed -n -r '/"ionMetaDependencies":\s+\{/,/\}/{ /"ionMetaDependencies":\s+\{/d; /}/d; p; }' $frameworkPath/applications/$appName/package.json`
-  if ! [ ${#apps[@]} = 0 ] ; then 
-    if ! [ $quietMode ] ; then echo "Addition apps list: $apps"; fi
-    applist=`echo $apps | tr -d [:space:] | tr -d '"' | tr ',' '\n'`
-
-    for i in ${applist[@]}
-    do
-      if ! [ $quietMode ] ; then echo "Inslall ext-app: $i"; fi
-      IFS=':' tmp=($i)
-      if ! [ -d "$frameworkPath/applications/${tmp[0]}" ]; then
-        cd $frameworkPath/applications
-        git clone --quiet "$IONDVUrlGitExtApp/${tmp[0]}.git"
-        if [ $? -ne 0 ]; then echo "Didn't clone $IONDVUrlGitExtApp/${tmp[0]}.git"; exit; fi
-      fi
-      cd "$frameworkPath/applications/${tmp[0]}"
-      git stash
-      git pull
-      if ! [ $skipTagMode ] ; then git checkout tags/${tmp[1]}; fi
-      IFS=$IFS_def
-    done
-  fi
-fi
-
-if ! [ -d $frameworkPath/modules ]; then 
-  mkdir $frameworkPath/modules 
-fi
-
-# ionModulesDependencies
-grep '"ionModulesDependencies"\s*:\s*{' $frameworkPath/applications/$appName/package.json > /dev/null # Check empty
-if [ $? -eq 0 ]; then 
-grep '"ionModulesDependencies"\s*:\s*{[\s\n]*}' $frameworkPath/applications/$appName/package.json > /dev/null
-fi
-if [ $? -ne 0 ]; then
-  modules=`sed -n -r '/"ionModulesDependencies":\s+\{/,/\}/{ /"ionModulesDependencies":\s+\{/d; /}/d; p; }' $frameworkPath/applications/$appName/package.json`
-  echo Modules list: $modules
-  if ! [ ${#modules[@]} = 0 ] ; then
-    modlist=`echo $modules | tr -d [:space:] | tr -d '"' | tr ',' '\n'`
-    for i in ${modlist[@]}
-    do
-      if ! [ $quietMode ] ; then echo "Install module: $i"; fi
-      IFS=':' tmp=($i)
-      if ! [ -d "$frameworkPath/modules/${tmp[0]}" ]; then
-        cd $frameworkPath/modules
-        git clone --quiet "$IONDVUrlGitModules/${tmp[0]}.git"
-        if [ $? -ne 0 ]; then echo "Didn't clone $IONDVUrlGitModules/${tmp[0]}.git"; exit; fi
-      fi
-      cd "$frameworkPath/modules/${tmp[0]}"
-      git stash
-      git pull
-      if ! [ $skipTagMode ] ; then git checkout tags/${tmp[1]}; fi
-      IFS=$IFS_def
-    done
-  fi
-fi
-
-if ! [ $quietMode ] ; then echo "Build IONDV application: $appName"; fi
-cd $frameworkPath
-export NODE_PATH=$frameworkPath
-
-echo "auth.denyTop=false" > "$frameworkPath/config/setup.ini"
-echo "auth.registration=false" >> "$frameworkPath//config/setup.ini"
-echo "db.uri=mongodb://$mongodbUri/$appName" >> "$frameworkPath/config/setup.ini"
-echo "server.ports[]=8888" >> "$frameworkPath/config/setup.ini"
-echo "module.default=registry" >> "$frameworkPath/config/setup.ini"
-echo "fs.storageRoot=./files" >> "$frameworkPath/config/setup.ini"
-echo "fs.urlBase=/files" >> "$frameworkPath/config/setup.ini"
-echo "deploy.mode=db" >> "$frameworkPath/config/setup.ini"
-
-echo "node bin/import --src ./applications/$appName --ns $appName" > "$frameworkPath/init.sh"
-echo "node bin/setup $appName --reset" >> "$frameworkPath/init.sh"
-for i in ${applist[@]}
-do
-  IFS=':' tmp=($i)
-  if ! [ -d "$frameworkPath/applications/${tmp[0]}" ]; then
-    echo "node bin/setup ${tmp[0]}" >> "$frameworkPath/init.sh"
-  fi
-done
-if [ $importData ] ; then echo "node bin/import-data --src ./applications/$appName/data --ns $appName" >> "$frameworkPath/init.sh"; fi
-echo "node bin/adduser --name demo --pwd ion-demo" >> "$frameworkPath/init.sh"
-echo "node bin/acl --u demo@local --role admin --p full" >> "$frameworkPath/init.sh"
-if [ $importAcl ] ; then echo "node bin/acl --d ./applications/$appName/acl" >> "$frameworkPath/init.sh"; fi
-if [ $startCluster ] ; then
-  echo "export WORKER_COUNT=$startCluster" >> "$frameworkPath/init.sh"
-  echo "node bin/cluster" >> "$frameworkPath/init.sh"
-else
-  echo "node bin/www" >> "$frameworkPath/init.sh"
-fi
-
+# Build
 if [ $dockerUse ] ; then
-  echo "FROM node:$nodeVersion" > "$frameworkPath/Dockerfile"
-  echo "WORKDIR /var/www" >> "$frameworkPath/Dockerfile"
-  echo "COPY . ." >> "$frameworkPath/Dockerfile"
-  echo "EXPOSE 8888" >> "$frameworkPath/Dockerfile"
-  echo "ENV NODE_PATH /var/www" >> "$frameworkPath/Dockerfile"
-  if [ $startCluster ] ; then echo "ENV WORKER_COUNT $startCluster" >> "$frameworkPath/Dockerfile"; fi
-  echo "CMD [\"bash\", \"init.sh\"]" >> "$frameworkPath/Dockerfile"
-
-  echo "**/.eslintrc.yml" > "$frameworkPath/.dockerignore"
-  echo -e ".eslinignore\n.editorconfig\n.tern-project" >> "$frameworkPath/.dockerignore"
-  echo -e ".gitignore\n.git/**\n**/.git/**" >> "$frameworkPath/.dockerignore"
-  echo -e ".npmignore\n**/package-lock.json" >> "$frameworkPath/.dockerignore"
-  echo -e "/config/config.json.devel\n/config/config.json.prod\n/config/setup.ini.example" >> "$frameworkPath/.dockerignore"
-  echo -e "/docs/**\n**/docs/**\n/changelog*" >> "$frameworkPath/.dockerignore"
-  echo -e "/log/**\n/test/**" >> "$frameworkPath/.dockerignore"
-  echo -e "/view/default/vendor" >> "$frameworkPath/.dockerignore"
-  echo -e "/view/default/node_modules" >> "$frameworkPath/.dockerignore"
-  echo -e "/modules/*/view/default/vendor/**" >> "$frameworkPath/.dockerignore"
-  echo -e "/modules/*/view/default/node_modules/**" >> "$frameworkPath/.dockerignore"
-  echo -e "/applications/*/themes/*/vendor/**" >> "$frameworkPath/.dockerignore"
-  echo -e "/applications/*/themes/*/node_modules/**" >> "$frameworkPath/.dockerignore"
-fi
-
-
-cd $frameworkPath
-if [ $postInstScript ] ; then
-  if ! [ $quietMode ] ; then echo "Running postInstall script $postInstScript, before app build"; fi
-  $postInstScript
-fi
-
-#npm -no-package-lock install gulp@"^4.0.0" gulp-clean-css@"~4.0.0" gulp-jsmin@"~0.1.5" gulp-less@"~4.0.1" gulp-rename@"~1.4.0"
-npm install
-
-gulp build
-if [ $? -ne 0 ]; then
-  echo "Build app error. Exit"
-  exit
-fi
-
-rm -r -f ./node_modules
-
-if ! [ $quietMode ] ; then echo 'Install npm production'; fi
-npm ci --only=production
-
-
-if ! [ $dockerUse ] ; then
-  echo "Test user. Login: demo, password: ion-demo"
-  bash ./init.sh
+  f_install_docker
 else
-  imageVer=`grep -E '\"version\"\s*:\s*\"' $frameworkPath/applications/$appName//package.json | grep -o -E '[0-9\.]+'`
-  if ! [ $quietMode ] ; then echo "Build docker version: $imageVer"; fi
-  cd $frameworkPath
-  docker image build -t $imageName:$imageVer .
-  cd ..
-  docker tag $imageName:$imageVer $imageName:latest
-  if ! [ $quietMode ] ; then echo "Build docker image: $imageName:$imageVer and $imageName:latest"; fi
-  if [ $mongoLink ] ; then
-    if ! [ $quietMode ] ; then echo "Running docker container: $dockerName, linked to $mongoLink"; fi
-    docker run -d -p 8888:8888 --name $dockerName --link $mongoLink $imageName
-  else   # TODO для докера нужен какой-то проброс портов на host. И параметр - запускать или нет.
-    if ! [ $quietMode ] ; then echo "Running docker container: $dockerName"; fi
-    docker run -d -p 8888:8888 --name $dockerName $imageName 
-  fi
-  sleep 60
-  if ! [ $quietMode ] ; then docker logs $dockerName; fi
-  curl localhost:8888 # TODO проверка результата
-  if [ $yesToAll ] ; then
-    echo "Save docker container to file"
-    choice="y"
-  else
-    read -p "\nSave docker container to file at $startDie (y/n)?" choice
-  fi
-  case "$choice" in
-    y|Y ) 
-      docker save $imageName:latest -o $startDir/$dockerName.docker-image.tar
-      echo "Save $startDir/$dockerName.docker-image.tar"
-      ;;
-    n|N );;
-    * ) echo "invalid";;
-  esac
+  f_install_git
 fi
 
 cd $startDir
