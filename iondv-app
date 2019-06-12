@@ -149,8 +149,8 @@ function f_check_mongo () {
 }
 
 ####################################
-# Version
-#################################
+# Version                          #
+####################################
 function f_get_framework_ver() {
   packagePath=$1
   local IFS_def=$IFS
@@ -168,6 +168,60 @@ function f_get_framework_ver() {
         IFS=$IFS_def
       done
     fi
+  fi
+}
+
+function f_get_metadep_ver() {
+  appPackagePath=$1
+  if grep -q '"ionMetaDependencies"\s*:\s*{' $appPackagePath && ! grep -q '"ionMetaDependencies"\s*:\s*{[\s\n]*}' $appPackagePath; then
+    local metadepAll=`sed -n -r '/"ionMetaDependencies":\s+\{/,/\}/{ /"ionMetaDependencies":\s+\{/d; /}/d; p; }' $appPackagePath`
+    if ! [ $quietMode ] ; then echo "Addition apps list: $metadepAll"; fi
+    if ! [ ${#metadepAll[@]} = 0 ] ; then
+      metadepPairList=`echo $metadepAll | tr -d [:space:] | tr -d '"' | tr ',' '\n'`
+    fi
+  fi
+}
+#  if grep -Eq '"ionModulesDependencies"\s*:\s*{' $frameworkPath/package.json && ! grep -Eq '"ionModulesDependencies"\s*:\s*{[\s\n]*}' $frameworkPath/package.json; then
+#    modules=`sed -n -r '/"ionModulesDependencies":\s+\{/,/\}/{ /"ionModulesDependencies":\s+\{/d; /}/d; p; }' $frameworkPath/package.json`
+function f_get_modulesdep_ver() {
+  appPackagePath=$1
+  if grep -Eq '"ionModulesDependencies"\s*:\s*{' $appPackagePath && ! grep -Eq '"ionModulesDependencies"\s*:\s*{[\s\n]*}' $appPackagePath; then
+    local modulesdepAll=`sed -n -r '/"ionModulesDependencies":\s+\{/,/\}/{ /"ionModulesDependencies":\s+\{/d; /}/d; p; }' $appPackagePath`
+    if ! [ $quietMode ] ; then echo "Modules list: $modulesdepAll"; fi
+    if ! [ ${#modulesdepAll[@]} = 0 ] ; then
+      modulesDepPairList=`echo $modulesdepAll | tr -d [:space:] | tr -d '"' | tr ',' '\n'`
+    fi
+  fi
+}
+
+##################################
+# Build docker                  #
+#################################
+
+function f_raw_docker_build() {
+  # TODO CHECK BUILD VERSION, IF EXIST - SKIP BUILD
+  local rawDockerName=$1
+  local rawDockerVer=$2
+  local baseGitUrl=$3
+  if ! [ $quietMode ] ; then echo "Build raw docker $rawDockerName:$rawDockerVer from $baseGitUrl/$rawDockerName"; fi
+  if [ $dockerVersionSave ]; then
+    local postfix="-$rawDockerName"
+    echo "FROM alpine/git as iondv-$rawDockerName"                                            > "$frameworkPath/Dockerfile$postfix"
+  else
+    echo "FROM alpine/git as iondv-$rawDockerName"                                            >> "$frameworkPath/Dockerfile$postfix"
+  fi
+  echo "WORKDIR /var/www/applications"                                                   >> "$frameworkPath/Dockerfile$postfix"
+  if ! [ $skipTagMode ] ; then
+    echo "LABEL version=\"$rawDockerVer\""                                                   >> "$frameworkPath/Dockerfile$postfix"
+  fi
+  echo "RUN git clone --quiet \"$baseGitUrl/$rawDockerName.git\""                      >> "$frameworkPath/Dockerfile$postfix"
+  if ! [ $skipTagMode ] ; then
+    echo "WORKDIR /var/www/applications/$rawDockerName"                                       >> "$frameworkPath/Dockerfile$postfix"
+    echo "RUN git checkout \"tags/$rawDockerVer\""                                           >> "$frameworkPath/Dockerfile$postfix"
+    if [ $dockerVersionSave ]; then
+        docker image build -t "iondv-$rawDockerName:$rawDockerVer" -f "$frameworkPath/Dockerfile$postfix" "$frameworkPath/."
+    fi
+    # TODO GET VERSION AND COPY AND SET IN NEW ONE DOCKER - SMALLEST AND VERIFED VERSION
   fi
 }
 
@@ -258,7 +312,8 @@ function f_dockerfile() {
                                                                                               >> "$frameworkPath/Dockerfile$postfix"
   fi
   docker image build -t "iondv-raw-$appNameAndVer" -f "$frameworkPath/Dockerfile$postfix" "$frameworkPath/."
-  docker run --rm --entrypoint="" "iondv-raw-$appNameAndVer" cat "/var/www/applications/$appName/package.json" > $frameworkPath/package.json
+  docker run --rm --entrypoint="" "iondv-raw-$appNameAndVer" \
+         cat "/var/www/applications/$appName/package.json" > $frameworkPath/package.json # TODO TO FUNCTION - GET VERSION FROM DOCKER
 
   postfix=""
   # Build framework's docker image
@@ -289,76 +344,29 @@ function f_dockerfile() {
       else
         docker image build -t "iondv-framework:latest" -f "$frameworkPath/Dockerfile$postfix" "$frameworkPath/."
       fi
+      # TODO GET VERSION AND COPY AND SET IN NEW ONE DOCKER - SMALLEST AND VERIFED VERSION
     fi
   fi
 
   # ionMetaDependencies
-  IFS_def=$IFS
-  if grep -q '"ionMetaDependencies"\s*:\s*{' $frameworkPath/package.json && ! grep -q '"ionMetaDependencies"\s*:\s*{[\s\n]*}' $frameworkPath/package.json; then
-    apps=`sed -n -r '/"ionMetaDependencies":\s+\{/,/\}/{ /"ionMetaDependencies":\s+\{/d; /}/d; p; }' $frameworkPath/package.json`
-    if ! [ $quietMode ] ; then echo "Addition apps list: $apps"; fi
-    if ! [ ${#apps[@]} = 0 ] ; then
-      applist=`echo $apps | tr -d [:space:] | tr -d '"' | tr ',' '\n'`
-      for i in ${applist[@]}
-      do
-        if ! [ $quietMode ] ; then echo "Docker for ext-app: $i"; fi
-        IFS=':' tmp=($i)
-        if [ $dockerVersionSave ]; then
-          postfix="-${tmp[0]}"
-          echo "FROM alpine/git as iondv-${tmp[0]}"                                            > "$frameworkPath/Dockerfile$postfix"
-        else
-          echo "FROM alpine/git as iondv-${tmp[0]}"                                            >> "$frameworkPath/Dockerfile$postfix"
-        fi
-        if ! [ $skipTagMode ] ; then
-          echo "LABEL version=\"${tmp[1]}\""                                                   >> "$frameworkPath/Dockerfile$postfix"
-        fi
-        echo "WORKDIR /var/www/applications"                                                   >> "$frameworkPath/Dockerfile$postfix"
-        echo "RUN git clone --quiet \"$IONDVUrlGitExtApp/${tmp[0]}.git\""                      >> "$frameworkPath/Dockerfile$postfix"
-        if ! [ $skipTagMode ] ; then
-          echo "WORKDIR /var/www/applications/${tmp[0]}"                                       >> "$frameworkPath/Dockerfile$postfix"
-          echo "RUN git checkout \"tags/${tmp[1]}\""                                           >> "$frameworkPath/Dockerfile$postfix"
-          if [ $dockerVersionSave ]; then
-              docker image build -t "iondv-${tmp[0]}:${tmp[1]}" -f "$frameworkPath/Dockerfile$postfix" "$frameworkPath/."
-          fi
-        fi
-        IFS=$IFS_def
-      done
-    fi
+  f_get_metadep_ver $frameworkPath/package.json
+  if [ ${#metadepPairList} -ne 0 ]; then
+    for temp in ${modulesDepPairList[@]}; do
+      f_raw_docker_build ${temp%:*} ${temp##*:} $IONDVUrlGitExtApp
+    done
   fi
-
 
   # ionModulesDependencies
-  if grep -Eq '"ionModulesDependencies"\s*:\s*{' $frameworkPath/package.json && ! grep -Eq '"ionModulesDependencies"\s*:\s*{[\s\n]*}' $frameworkPath/package.json; then
-    modules=`sed -n -r '/"ionModulesDependencies":\s+\{/,/\}/{ /"ionModulesDependencies":\s+\{/d; /}/d; p; }' $frameworkPath/package.json`
-    if ! [ $quietMode ] ; then echo Modules list: $modules; fi
-    if ! [ ${#modules[@]} = 0 ] ; then
-      modlist=`echo $modules | tr -d [:space:] | tr -d '"' | tr ',' '\n'`
-      for i in ${modlist[@]}
-      do
-        if ! [ $quietMode ] ; then echo "Docker for module: $i"; fi
-        IFS=':' tmp=($i)
-        if [ $dockerVersionSave ]; then
-          postfix="-${tmp[0]}"
-          echo "FROM alpine/git as iondv-${tmp[0]}"                                           > "$frameworkPath/Dockerfile$postfix"
-        else
-          echo "FROM alpine/git as iondv-${tmp[0]}"                                           >> "$frameworkPath/Dockerfile$postfix"
-        fi
-        if ! [ $skipTagMode ] ; then
-          echo "LABEL version=\"${tmp[1]}\""                                                  >> "$frameworkPath/Dockerfile$postfix"
-        fi
-        echo "WORKDIR /var/www/modules"                                                       >> "$frameworkPath/Dockerfile$postfix"
-        echo "RUN git clone --quiet \"$IONDVUrlGitModules/${tmp[0]}.git\""                    >> "$frameworkPath/Dockerfile$postfix"
-        if ! [ $skipTagMode ] ; then
-          echo "WORKDIR /var/www/modules/${tmp[0]}"                                           >> "$frameworkPath/Dockerfile$postfix"
-          echo "RUN git checkout \"tags/${tmp[1]}\""                                          >> "$frameworkPath/Dockerfile$postfix"
-          if [ $dockerVersionSave ]; then
-              docker image build -t "iondv-${tmp[0]}:${tmp[1]}" -f "$frameworkPath/Dockerfile$postfix" "$frameworkPath/."
-          fi
-        fi
-        IFS=$IFS_def
-      done
-    fi
+  f_get_modulesdep_ver $frameworkPath/package.json
+  if [ ${#modulesDepPairList} -ne 0 ]; then
+    for temp in ${modulesDepPairList[@]}; do
+      f_raw_docker_build ${temp%:*} ${temp##*:} $IONDVUrlGitModules
+    done
   fi
+
+
+
+# TODO сборку самого приложения. Но нужно предвариельно формировать массив с парами со списом модулей и доп.приложениями и потом их копировать (с ыраше - примерно как параметры? iondv-app)
 
 exit
 
@@ -450,30 +458,6 @@ function f_install_git () {
     cd "$frameworkPath"
     git checkout tags/$frameworkVer
   fi
-#  if ! [ $skipTagMode ] ; then
-#    grep '"engines"\s*:\s*{' $frameworkPath/applications/$appName/package.json > /dev/null # Check empty
-#    if [ $? -eq 0 ]; then
-#    grep '"engines"\s*:\s*{[\s\n]*}' $frameworkPath/applications/$appName/package.json > /dev/null
-#    fi
-#    if [ $? -ne 0 ]; then
-#      engines=`sed -n -r '/"engines":\s+\{/,/\}/{ /"engines":\s+\{/d; /}/d; p; }' $frameworkPath/applications/$appName/package.json`
-#      if ! [ ${#engines[@]} = 0 ] ; then
-#        if ! [ $quietMode ] ; then echo "Engine list: $engines"; fi
-#        enginelist=`echo $engines | tr -d [:space:] | tr -d '"' | tr ',' '\n'`
-#        for i in ${enginelist[@]}
-#        do
-#          IFS=':' tmp=($i)
-#          if [ ${tmp[0]} = "ion" ]; then
-#            cd "$frameworkPath"
-#            git checkout tags/${tmp[1]}
-#            if ! [ $quietMode ] ; then echo "Use ion engine: $i"; fi
-#          fi
-#          IFS=$IFS_def
-#        done
-#      fi
-#    fi
-#  fi
-
 
   # ionMetaDependencies
   grep '"ionMetaDependencies"\s*:\s*{' $frameworkPath/applications/$appName/package.json > /dev/null # Check empty
