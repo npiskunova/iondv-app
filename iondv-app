@@ -634,10 +634,16 @@ function f_install_docker() {
 ##################################
 
 # Process param and path
+# Process param and path
 startDir=`pwd`
 scriptName=${0##*/}
-scriptPath=${0%/$scriptName}
-scriptPath=`cd $scriptPath && pwd && cd $startDir`
+if [ "$scriptName"="${0}" ]; then
+  scriptPath=$startDir
+else
+  scriptPath=${0%/$scriptName}
+  scriptPath=`cd $scriptPath && pwd`
+  cd $startDir
+fi
 
 while [ -n "$1" ]
 do
