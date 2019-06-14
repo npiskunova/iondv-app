@@ -257,7 +257,7 @@ function f_buld_docker_version() {
 # Create ini and build files      #
 ##################################
 function f_create_setup_ini() {
-  if [ $dockerUse ]; then configPath=""; else configPath="/config"; fi
+  configPath="$1"
   echo "auth.denyTop=false"                                                                   > "$frameworkPath$configPath/setup.ini"
   echo "auth.registration=false"                                                              >> "$frameworkPath$configPath/setup.ini"
   echo "db.uri=mongodb://$mongodbUri/$appName"                                                >> "$frameworkPath$configPath/setup.ini"
@@ -470,7 +470,7 @@ function f_install_git () {
     cd $startDir
     $scriptPath/change-namespace.sh $quietMode "$frameworkPath/applications/$appName" $prevAppName $newAppName
   fi
-
+exit
   # package.json dependencies
 
   # engines - iondv framework version
@@ -519,7 +519,7 @@ function f_install_git () {
   cd $frameworkPath
   export NODE_PATH=$frameworkPath
 
-  f_create_setup_ini
+  f_create_setup_ini "/config"
   f_create_init_sh
 
   cd $frameworkPath
@@ -637,7 +637,7 @@ function f_install_docker() {
 # Process param and path
 startDir=`pwd`
 scriptName=${0##*/}
-if [ "$scriptName"="${0}" ]; then
+if [ $scriptName = $0 ]; then
   scriptPath=$startDir
 else
   scriptPath=${0%/$scriptName}
@@ -770,7 +770,7 @@ cd $installDir
 
 # Build
 if [ -z "$buildType" ]; then
-  echo "Wrong build method. Use default: git"
+  echo "Didn't set build method. Use default: git"
   f_install_git
 else
   case "$buildType" in
