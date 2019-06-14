@@ -395,6 +395,8 @@ function f_build_docker() {
     echo "RUN gulp build"                                                                     >> "$frameworkPath/Dockerfile"
     echo "RUN rm -r -f ./node_modules"                                                        >> "$frameworkPath/Dockerfile"
     echo "RUN npm ci --only=production"                                                       >> "$frameworkPath/Dockerfile" # TODO NPM uninstall dev
+    echo "COPY ./.dockerignore /var/www/.dockerignore"                                        >> "$frameworkPath/Dockerfile"
+
     echo
     echo "FROM node:10 as iondv-$appName"                                                     >>  "$frameworkPath/Dockerfile"
 #    echo "FROM node:10-alpine"                                                                 >>  "$frameworkPath/Dockerfile"
