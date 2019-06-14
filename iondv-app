@@ -63,7 +63,7 @@ function f_check_node() {
   fi
   local nodeVersion=`echo $nodeCheck | grep -Po "^v\d+" |  grep -Po "\d+"`
 
-  if [[ $nodeVersion -le 8 || $nodeVersion -ge 10  ]]; then
+  if [[ $nodeVersion -lt 8 || $nodeVersion -gt 10  ]]; then
     echo "Node major version: $nodeVersion is incompatible. Supported node version between 8.x.x and 10.x.x "
     exit
   elif ! [ $quietMode ] ; then echo "Node major version: $nodeVersion";
