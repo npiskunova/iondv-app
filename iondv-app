@@ -470,9 +470,8 @@ function f_install_git () {
     cd $startDir
     $scriptPath/change-namespace.sh $quietMode "$frameworkPath/applications/$appName" $prevAppName $newAppName
   fi
-exit
-  # package.json dependencies
 
+  # package.json dependencies
   # engines - iondv framework version
   if ! [ $skipTagMode ] ; then f_get_framework_ver $frameworkPath/applications/$appName/package.json; fi
   if [ $frameworkVer ]; then
