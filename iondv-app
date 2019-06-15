@@ -231,6 +231,8 @@ function f_git_set_dockerfile() {
     echo "LABEL version=\"$gitDockerVer\""                                                    >> "$frameworkPath/Dockerfile$postfix"
   fi
   echo "RUN git clone --quiet \"$gitUrl\" $folderName"                                        >> "$frameworkPath/Dockerfile$postfix"
+  echo "COPY ./.dockerignore /var/www/.dockerignore"                                          >> "$frameworkPath/Dockerfile$postfix"
+
   if ! [ $skipTagMode ] && ! [ "$gitDockerVer"="latest" ] ; then
   echo $gitDockerVer
       echo "WORKDIR $destPath/$folderName"                                                    >> "$frameworkPath/Dockerfile$postfix"
@@ -393,6 +395,8 @@ function f_build_docker() {
     echo "RUN gulp build"                                                                     >> "$frameworkPath/Dockerfile"
     echo "RUN rm -r -f ./node_modules"                                                        >> "$frameworkPath/Dockerfile"
     echo "RUN npm ci --only=production"                                                       >> "$frameworkPath/Dockerfile" # TODO NPM uninstall dev
+    echo "COPY ./.dockerignore /var/www/.dockerignore"                                        >> "$frameworkPath/Dockerfile"
+
     echo
     echo "FROM node:10 as iondv-$appName"                                                     >>  "$frameworkPath/Dockerfile"
 #    echo "FROM node:10-alpine"                                                                 >>  "$frameworkPath/Dockerfile"
@@ -420,6 +424,57 @@ function f_build_docker() {
    echo "Docker $imageName is exist, skip building"
  fi
 }
+
+
+function f_stop_docker() {
+  if ! [ $appGetVersion ] ; then appGetVersion="latest"; fi
+  imageName="iondv-$appName:$appGetVersion"
+  echo "Will be stop container and remove $dockerName, remove docker image: $imageName"
+  echo "Also will be drop db: $dbName"
+  if [ $yesToAll ] ; then
+    choice="y"
+  else
+    read -p "Continue (y/n)?" choice
+  fi
+  case "$choice" in
+    y|Y )
+      docker stop $dockerName
+      docker rm $dockerName
+      docker image rmi $imageName
+      docker exec -it $mongoLink mongo $dbName --quiet --eval "db.dropDatabase();";;
+    n|N );;
+    * ) echo "invalid";;
+  esac
+}
+
+function f_start_docker() {
+  if [ $mongoLink ] ; then
+    if ! [ $quietMode ] ; then echo "Running docker container: $dockerName from $imageName, linked to $mongoLink"; fi
+    docker run -d -p 8888:8888 --name $dockerName --link $mongoLink $imageName
+  else   # TODO для докера нужен какой-то проброс портов на host. И параметр - запускать или нет.
+    if ! [ $quietMode ] ; then echo "Running docker container: $dockerName from $imageName"; fi
+    docker run -d -p 8888:8888 --name $dockerName $imageName
+  fi
+  sleep 60
+  if ! [ $quietMode ] ; then docker logs $dockerName; fi
+  curl localhost:8888 # TODO Check result - redirect to default from setup
+  echo
+  if [ $yesToAll ] ; then
+    echo "Save docker container to file"
+    choice="y"
+  else
+    read -p "\nSave docker container to file at $startDir (y/n)?" choice
+  fi
+  case "$choice" in
+    y|Y )
+      docker save $imageName -o $startDir/$dockerName.docker-image.tar
+      echo "Save $startDir/$dockerName.docker-image.tar"
+      ;;
+    n|N );;
+    * ) echo "invalid";;
+  esac
+}
+
 
 
 ##################################
