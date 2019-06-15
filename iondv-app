@@ -268,6 +268,18 @@ function f_create_setup_ini() {
   echo "fs.storageRoot=./files"                                                               >> "$frameworkPath$configPath/setup.ini"
   echo "fs.urlBase=/files"                                                                    >> "$frameworkPath$configPath/setup.ini"
   echo "deploy.mode=db"                                                                       >> "$frameworkPath$configPath/setup.ini"
+  echo "auth.exclude[]=/files/**"                                                             >> "$frameworkPath$configPath/setup.ini"
+  echo "auth.exclude[]=/vendor/**"                                                            >> "$frameworkPath$configPath/setup.ini"
+  echo "auth.exclude[]=/css/**"                                                               >> "$frameworkPath$configPath/setup.ini"
+  echo "auth.exclude[]=/fonts/**"                                                             >> "$frameworkPath$configPath/setup.ini"
+  echo "auth.exclude[]=/favicon.ico"                                                          >> "$frameworkPath$configPath/setup.ini"
+  for temp in ${modulesDepPairList[@]}; do
+    echo "auth.exclude[]=/${temp%:*}/vendor/**"                                               >> "$frameworkPath$configPath/setup.ini"
+    echo "auth.exclude[]=/${temp%:*}/css/**"                                                  >> "$frameworkPath$configPath/setup.ini"
+    echo "auth.exclude[]=/${temp%:*}/js/**"                                                   >> "$frameworkPath$configPath/setup.ini"
+    echo "auth.exclude[]=/${temp%:*}/img/**"                                                  >> "$frameworkPath$configPath/setup.ini"
+    echo "auth.exclude[]=/${temp%:*}/fonts/**"                                                >> "$frameworkPath$configPath/setup.ini"
+  done
 }
 
 function f_create_init_sh() {
@@ -343,7 +355,8 @@ function f_build_docker() {
     if [ $dockerVersionSave ]; then f_buld_docker_version "iondv-git-$temp" "$frameworkPath/Dockerfile-git-${temp%:*}" "$frameworkPath/."; fi
   done
 
-
+  f_create_setup_ini
+  f_create_init_sh
 
   if ! f_check_readiness_docker "$imageName"; then
     echo "FROM node:10 as iondv-base-$appName"                                                >  "$frameworkPath/Dockerfile"
@@ -661,8 +674,6 @@ function f_install_docker() {
   f_stop_docker
 
   if ! [ -d $frameworkPath ]; then mkdir $frameworkPath; fi
-  f_create_setup_ini
-  f_create_init_sh
   f_dockerignore
   f_build_docker
 
