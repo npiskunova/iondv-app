@@ -291,20 +291,20 @@ function f_create_init_sh() {
 }
 
 function  f_dockerignore() {
-  echo "**/.eslintrc.yml"                                                                     > "$frameworkPath/.dockerignore"
-  echo ".eslinignore\n.editorconfig\n.tern-project"                                           >> "$frameworkPath/.dockerignore"
-  echo ".gitignore\n.git/**\n**/.git/**"                                                      >> "$frameworkPath/.dockerignore"
-  echo ".npmignore\n**/package-lock.json"                                                     >> "$frameworkPath/.dockerignore"
-  echo "/config/config.json.devel\n/config/config.json.prod\n/config/setup.ini.example"       >> "$frameworkPath/.dockerignore"
-  echo "/docs/**\n**/docs/**\n/changelog*"                                                    >> "$frameworkPath/.dockerignore"
-  echo "/log/**\n/test/**"                                                                    >> "$frameworkPath/.dockerignore"
-  echo "/view/default/vendor"                                                                 >> "$frameworkPath/.dockerignore"
-  echo "/view/default/node_modules"                                                           >> "$frameworkPath/.dockerignore"
-  echo "/modules/*/view/default/vendor/**"                                                    >> "$frameworkPath/.dockerignore"
-  echo "/modules/*/view/default/node_modules/**"                                              >> "$frameworkPath/.dockerignore"
-  echo "/applications/*/themes/*/vendor/**"                                                   >> "$frameworkPath/.dockerignore"
-  echo "/applications/*/themes/*/node_modules/**"                                             >> "$frameworkPath/.dockerignore"
-  echo "./Dockerfile"                                                                         >> "$frameworkPath/.dockerignore"
+  echo -e "**/.eslintrc.yml"                                                                     > "$frameworkPath/.dockerignore"
+  echo -e ".eslinignore\n.editorconfig\n.tern-project"                                           >> "$frameworkPath/.dockerignore"
+  echo -e ".gitignore\n.git/**\n**/.git/**"                                                      >> "$frameworkPath/.dockerignore"
+  echo -e ".npmignore\n**/package-lock.json"                                                     >> "$frameworkPath/.dockerignore"
+  echo -e "/config/config.json.devel\n/config/config.json.prod\n/config/setup.ini.example"       >> "$frameworkPath/.dockerignore"
+  echo -e "/docs/**\n**/docs/**\n/changelog*"                                                    >> "$frameworkPath/.dockerignore"
+  echo -e "/log/**\n/test/**"                                                                    >> "$frameworkPath/.dockerignore"
+  echo -e "/view/default/vendor"                                                                 >> "$frameworkPath/.dockerignore"
+  echo -e "/view/default/node_modules"                                                           >> "$frameworkPath/.dockerignore"
+  echo -e "/modules/*/view/default/vendor/**"                                                    >> "$frameworkPath/.dockerignore"
+  echo -e "/modules/*/view/default/node_modules/**"                                              >> "$frameworkPath/.dockerignore"
+  echo -e "/applications/*/themes/*/vendor/**"                                                   >> "$frameworkPath/.dockerignore"
+  echo -e "/applications/*/themes/*/node_modules/**"                                             >> "$frameworkPath/.dockerignore"
+  echo -e "./Dockerfile"                                                                         >> "$frameworkPath/.dockerignore"
 }
 
 function f_build_docker() {
@@ -595,20 +595,6 @@ function f_start_docker() {
   if ! [ $quietMode ] ; then docker logs $dockerName; fi
   curl localhost:8888 # TODO Check result - redirect to default from setup
   echo
-  if [ $yesToAll ] ; then
-    echo "Save docker container to file"
-    choice="y"
-  else
-    read -p "\nSave docker container to file at $startDir (y/n)?" choice
-  fi
-  case "$choice" in
-    y|Y )
-      docker save $imageName -o $startDir/$dockerName.docker-image.tar
-      echo "Save $startDir/$dockerName.docker-image.tar"
-      ;;
-    n|N );;
-    * ) echo "invalid";;
-  esac
 }
 
 ##################################
