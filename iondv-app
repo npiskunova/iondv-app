@@ -307,7 +307,7 @@ function f_create_init_sh() {
 function  f_dockerignore() {
   echo -e "**/.eslintrc.yml"                                                                     > "$frameworkPath/.dockerignore"
   echo -e ".eslinignore\n.editorconfig\n.tern-project"                                           >> "$frameworkPath/.dockerignore"
-  echo -e ".gitignore\n.git/**\n**/.git/**"                                                      >> "$frameworkPath/.dockerignore"
+  echo -e ".gitignore\n**/.git/"                                                                 >> "$frameworkPath/.dockerignore"
   echo -e ".npmignore\n**/package-lock.json"                                                     >> "$frameworkPath/.dockerignore"
   echo -e "/config/config.json.devel\n/config/config.json.prod\n/config/setup.ini.example"       >> "$frameworkPath/.dockerignore"
   echo -e "/docs/**\n**/docs/**\n/changelog*"                                                    >> "$frameworkPath/.dockerignore"

@@ -66,7 +66,7 @@ function changeNamespace {
   case "$1" in 
     'data')
       if [ ${prepareFile##*.} = 'zip' ] ; then
-        echo "Skip: $prepareFile"
+        echo "  skip: $prepareFile"
         return
       fi
       ;;
@@ -113,35 +113,67 @@ function changeNamespace {
     'meta')
       if [ ${prepareFile##*.} = 'json' ] ; then 
         cat $prepareFile | \
+          sed -r "s|\"namespace\"\s*:\s*\"$nsPrev\"|\"namespace\": \"$nsNew\"|"  |
+          sed -r "s|@$nsPrev\"|@$nsNew\"|" |
           sed -r "s|@$nsPrev,|@$nsNew,|" > "$prepareFile-$curDate"
+        local prepared=1
+      fi
+      ;;
+    'views')
+      if [ ${prepareFile##*.} = 'json' ] ; then
+        cat $prepareFile |
+          sed -r "s|\"namespace\"\s*:\s*\"$nsPrev\"|\"namespace\": \"$nsNew\"|"  |
+          sed -r "s|@$nsPrev\"|@$nsNew\"|" > "$prepareFile-$curDate"
         local prepared=1
       fi
       ;;
     'navigation')
       if [ ${prepareFile##*.} = 'json' ] ; then 
         cat $prepareFile |
+          sed -r "s|\"namespace\"\s*:\s*\"$nsPrev\"|\"namespace\": \"$nsNew\"|"  |
           sed -r "s|@$nsPrev\"|@$nsNew\"|" > "$prepareFile-$curDate"
         local prepared=1
       fi
       ;;
     'templates')
       if [ ${prepareFile##*.} = 'ejs' ] ; then 
-        cat $prepareFile | \
+        cat $prepareFile |
           sed -r "s|geomap/render/$nsPrev|geomap/render/$nsNew|" |
           sed -r "s|/report/public/$nsPrev@|/report/public/$nsNew@|" |
           sed -r "s|/registry/$nsPrev@|/registry/$nsNew@|" |
           sed -r "s|@$nsPrev/|@$nsNew/|" > "$prepareFile-$curDate"
-
         local prepared=1
       fi
       ;;
-
     * ) 
-      if ! [ $quietMode ] ; then echo "$1 folder didn't have instruction to prepare. Skip $prepareFile"; fi      
+      if ! [ $quietMode ] ; then
+        if [ ${prepareFile##*.} = 'json' ] ; then
+          echo "Folder \"$1\" didn't have instruction to prepare. Use default check and replace for $prepareFile";
+          cat $prepareFile |
+            sed -r "s|\"applications/$nsPrev/|\"applications/$nsNew/|" |
+            sed -r "s|\"namespace\"\s*:\s*\"$nsPrev\"|\"namespace\": \"$nsNew\"|" > "$prepareFile-$curDate"
+#            sed -r "s|\"$nsPrev\"\s*:\s*\"|\"$nsNew\": \"|" | \
+#            sed -r "s|\"$nsPrev\"\s*:\s*\{|\"$nsNew\": \{|" | \
+#            sed -r "s|@$nsPrev\"|@$nsNew\"|" | \
+#            sed -r "s|\"$nsPrev@|\"$nsNew@|"
+        local prepared=1
+        elif [ ${prepareFile##*.} = 'js' ] ; then
+          echo "Folder \"$1\" didn't have instruction to prepare. Use default check and replace for $prepareFile";
+          cat $prepareFile |
+            sed -r "s|@$nsPrev'/|@$nsNew'/|" > "$prepareFile-$curDate"
+          local prepared=1
+        else
+          echo "Folder \"$1\" didn't have instruction to prepare and didn't recognize extension for use default check and replace for $prepareFile. Skip";
+          grep -n "$nsPrev" "$prepareFile"
+          return
+        fi
+
+
+      fi
       ;;
   esac
   if [ $prepared ] ; then
-    if ! [ $quietMode ] ; then echo "Prepared: $prepareFile"; fi    
+    if ! [ $quietMode ] ; then echo "  prepared: $prepareFile"; fi
     filePrepareCount=$(( $filePrepareCount + 1 ))
     checkPrevNsAndRenameFile $prepareFile
   fi
@@ -158,6 +190,12 @@ function changeNsInAllFilesInFolder {
       fileCount=$(( $fileCount + 1 ))
       changeNamespace $1 $file
     elif [ -d "$file" ] ; then
+      if echo "${file##*/}" | grep -q "@$nsPrev"; then
+        echo "  folder ${file##*/} from $filesPath have $nsPrev. Rename"
+        newFolderName=`echo "${file##*/}" | sed "s|@$nsPrev|@$nsNew|"`
+        mv "$file" "/$filesPath/$newFolderName"
+    #        newDataFileName="${tempName%@*}@$nsNew@${prepareFile##*@}"
+      fi
       changeNsInAllFilesInFolder $1 $file
     fi
   done
@@ -173,46 +211,12 @@ for folder in $appPath/* ; do
   if [ -d $folder ] ; then
     prepareFolder=${folder##*/}
     changeNsInAllFilesInFolder $prepareFolder $folder
-    if ! [ $quietMode ] ; then echo "Prepared $filePrepareCount($fileCount)files in $folder"; fi          
+    if ! [ $quietMode ] ; then echo "Prepared $filePrepareCount($fileCount)files in $folder"; fi
   fi
 done
 
-
-#отдельной утилитой
-#- deploy.json
-#namespace: "ns"
-#"namespaces": {
-#"ns": ""
-#}
-#"[a-zA-Z\-_]@ns"
-#"ns@[a-zA-Z\-_]"
-#пути applications/ns
-
-#      "refClass": "",
-#      "itemsClass": "conclusion",
-
-
-#ACL n:::sakh-pm@
-#c:::eventObjectBasic@sakh-pm:
-#sys:::url:registry/sakh-pm@project/*:
-
-
-# bi/navigation/object.json
-#"namespace": "sakh-pm",
-# "mine": "sakh-pm@eventsBase",
-
-
-# dashboard/layouts/indicator.ejs
-#redirect: 'registry/sakh-pm@indicatorValue.edit',
-# url: 'registry/api/indicatorValueBasic@sakh-pm',
-#node: 'sakh-pm@indicatorValue.edit',
-
-# data
-# "_class": "employee@sakh-pm",
-
-
 if [ -f "$appPath/package.json" ] ; then
-  if ! [ $quietMode ] ; then echo "Process package.json"; fi  
+  if ! [ $quietMode ] ; then echo "Process package.json"; fi
   cat $appPath/package.json | \
     sed -r "s|\"name\"\s*:\s*\"$nsPrev\"|\"name\": \"$nsNew\"|" > \
        $appPath/package_temp_$curDate.json
@@ -233,7 +237,7 @@ if [ -f "$appPath/deploy.json" ] ; then
   mv -f $appPath/deploy_temp_$curDate.json $appPath/deploy.json
   checkRes=`grep -n "$nsPrev" $appPath/deploy.json`
   if ! [ ${#checkRes} -eq 0 ] ; then
-    echo "Didn't all $nsPrev replace to $nsNew. Need manual check"
+    echo "Didn't all $nsPrev replace to $nsNew in deploy.json. Need manual check"
     grep -n "$nsPrev" $appPath/deploy.json
   fi
 fi
