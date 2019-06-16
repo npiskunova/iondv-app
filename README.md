@@ -1,40 +1,64 @@
 # iondv-app
 IONDV. Framework apps installer
 
+Install in one command:
+
+```
+curl -L -s https://github.com/iondv/iondv-app/archive/master.zip > 
+iondv-app.zip &&  unzip -p iondv-app.ziiondv-app-master/iondv-app > 
+iondv-app &&  bash iondv-app -q -i -m localhost:27017 develop-and-test
+```
+
+Where the parameters for the iondv-app are the following: `localhost: 27017` is the MongoDB address, and `develop-and-test` is the app name.
 
 Usage: 
 ```
-iondv-app [OPTION]... IONDV_APP_NAME_OR_GIT_URL'
- Install IONDV. Framework application to current dirrectory and create docker image.
-
-Options:'
-  -d                          stop, remove runnig app docker container and image,
-                              create and run new once
-  -c [value]                  start cluster with [value] count
-  -r                          remove app folder, if they exist
-  -i                          import data
-  -y                          yes to all
-  -q                          quiet mode. Show only major and warn information
-  -l [value]                  mongodb docker name, for link with app docker container
-                              (also set mongo uri value to [value]:27017)
-  -k                          skip check
-  -s [value]                  script to run after install and before build app
-  -m [value]                  mongo uri, for example: mongodb:27017. Default localhost:27017
-
-Environment:
-  IONDVUrlGitFramework       URL for get framework, default: https://github.com/iondv/framework.git'
-  IONDVUrlGitModules         Base of URL for get modules, default https://github.com/iondv'
-  IONDVUrlGitApp             Base of URL for get app, default https://github.com/iondv'
-  IONDVUrlGitExtApp          Base of URL for get app extension, default https://github.com/iondv'
+iondv-app [OPTION]... IONDV_APP_NAME|IONDV_APP_NAME@VERSION|GIT_URL'
+   'Install IONDV. Framework application to current dirrectory and create docker image.'
+   'Options:'
+   'Build app method options:'
+   ' -t [value]             git: use git clone (by default)'
+#  '                              zip: get from zip-files from github only [in construction]'
+#  '                              npm: get from npm [in construction]'
+   '                              docker:  without specific software on host mashine, only docker image'
+    'Universal options'
+   '  -c [value]                  start cluster with [value] count'
+   '  -m [value]                  mongo uri, for example: mongodb:27017. localhost:27017 - by default'
+   '  -r                          remove app workspace folder, if it exists'
+   '  -i                          data import'
+   '  -a                          acl (role and user) import'
+   '  -y                          yes to all'
+   '  -q                          quiet mode. Show only major information and warnings'
+   '  -l [value]                  mongodb docker name to link the app with docker container'
+   '                              (with -d option or docker method)'
+   '                              also set mongo uri value to [value]:27017'
+   '  -p [value]                  workspace path, where will be created app folder'
+   '  -s [value]                  full path to the script, run after installing and before building the app'
+   '  -n [value]                  new app namespace and name'
+   '  -h                          skip checkout to version in tag. Use default (last) version'
+   'Options for git, zip, npm method:'
+   '  -d                          stop, remove runnig app docker container and image,'
+   '                              build for local deploy (git build method)'
+   '  -k                          skip environment check'
+   'Options for docker method (ci):'
+   '  -v                          save provisional docker image as a template version, for example registry:3.0.0'
+                                 (to create cached version of components'
+  'Environment:'
+  IONDVUrlGitFramework       URL to get framework by default is https://github.com/iondv/framework.git'
+                       You can also set login and password to use in private repositry, for example'
+                 https://login:password@git.company-name.com/iondv/framework.git'
+  IONDVUrlGitModules         Base of URL to get modules, by default https://github.com/iondv'
+  IONDVUrlGitApp             Base of URL to get app, by default https://github.com/iondv'
+  IONDVUrlGitExtApp          Base of URL to get app extension, by default https://github.com/iondv'
 ```
 
 Example. Install and start app `khv-ticket-discount` with link docker mongodb
 
 ```
-./iondv-app -d -l mongodb khv-ticket-discount
+`./iondv-app --method docker -l mongodb khs-ticket-discount@1.0.1'
 ```
 
 Example: Install app with link to git and mongo uri'
 ```
-./iondv-app -m localhost:27017 https://git.iondv.ru/ION-METADATA/khv-svyaz-info.git'
+ `./iondv-app -m localhost:27017 https://github.com/akumidv/svyaz-info.git'
 ```
