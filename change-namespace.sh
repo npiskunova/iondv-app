@@ -50,7 +50,7 @@ function checkPrevNsAndRenameFile {
   local checkRes=`grep -n "$nsPrev" "$prepareFile"`
   if [ ${#checkRes} -ne 0 ] ; then
     echo -en "  ${i_warn}didn't all $nsPrev replace to $nsNew in $prepareFile. Need manual check${i_end}"
-    echo -en "  ${i_warn}" && grep -n "$nsPrev" "$prepareFile" && echo -en "${i_end}"
+    echo -en "  ${i_warn}" && grep -n "$nsPrev" "$prepareFile" && echo -en "${i_std}"
   fi
 }
 
@@ -81,7 +81,7 @@ function changeNamespace {
   case "$1" in
     'acl')
       if [ ${prepareFile##*.} = 'yml' ] ; then
-        cat $prepareFile | \
+        cat $prepareFile |
           sed -r "s|\"namespace\"\s*:\s*\"$nsPrev\"|\"namespace\": \"$nsNew\"|"  |
           sed -r "s|/$nsPrev@|/$nsNew@|" |
           sed -r "s|@$nsPrev:|@$nsNew:|" |
@@ -92,7 +92,8 @@ function changeNamespace {
     'bi')
       if echo $prepareFile | grep -Eq "/bi/navigation/"; then
         if [ ${prepareFile##*.} = 'json' ] ; then
-          cat $prepareFile | \
+          cat $prepareFile |
+            sed -r "s|\"namespace\"\s*:\s*\"$nsPrev\"|\"namespace\": \"$nsNew\"|"  |
             sed -r "s|\"mine\"\s*:\s*\"$nsPrev@|\"mine\": \"$nsNew@|" > "$prepareFile-$curDate"
           local prepared=1
         fi
@@ -100,7 +101,7 @@ function changeNamespace {
       ;;
     'data')
       if [ ${prepareFile##*.} = 'json' ] ; then
-        cat $prepareFile | \
+        cat $prepareFile |
           sed -r "s|@$nsPrev\"|@$nsNew\"|" > "$prepareFile-$curDate"
         local prepared=1
       fi
@@ -108,7 +109,7 @@ function changeNamespace {
     'geo')
       if echo $prepareFile | grep -Eq "/geo/layers/"; then
         if [ ${prepareFile##*.} = 'json' ] ; then
-          cat $prepareFile | \
+          cat $prepareFile |
             sed -r "s|geomap/render/$nsPrev|geomap/render/$nsNew|" |
             sed -r "s|@$nsPrev\"|@$nsNew\"|" |
             sed -r "s|/registry/$nsPrev@|/registry/$nsNew@|" |
@@ -117,7 +118,7 @@ function changeNamespace {
         fi
       elif echo $prepareFile | grep -Eq "/geo/navigation/" ; then
         if [ ${prepareFile##*.} = 'json' ] ; then 
-          cat $prepareFile | \
+          cat $prepareFile |
             sed -r "s|geomap/render/$nsPrev|geomap/render/$nsNew|" | \
             sed -r "s|@$nsPrev\"|@$nsNew\"|" > "$prepareFile-$curDate"
           local prepared=1
@@ -126,7 +127,7 @@ function changeNamespace {
       ;;
     'meta')
       if [ ${prepareFile##*.} = 'json' ] ; then 
-        cat $prepareFile | \
+        cat $prepareFile |
           sed -r "s|\"namespace\"\s*:\s*\"$nsPrev\"|\"namespace\": \"$nsNew\"|"  |
           sed -r "s|@$nsPrev\"|@$nsNew\"|" |
           sed -r "s|@$nsPrev,|@$nsNew,|" > "$prepareFile-$curDate"
@@ -137,6 +138,7 @@ function changeNamespace {
       if [ ${prepareFile##*.} = 'json' ] ; then
         cat $prepareFile |
           sed -r "s|\"namespace\"\s*:\s*\"$nsPrev\"|\"namespace\": \"$nsNew\"|"  |
+          sed -r "s|/report/public/$nsPrev@|/report/public/$nsNew@|" |
           sed -r "s|@$nsPrev\"|@$nsNew\"|" > "$prepareFile-$curDate"
         local prepared=1
       fi
@@ -154,15 +156,27 @@ function changeNamespace {
         cat $prepareFile |
           sed -r "s|geomap/render/$nsPrev|geomap/render/$nsNew|" |
           sed -r "s|/report/public/$nsPrev@|/report/public/$nsNew@|" |
-          sed -r "s|/registry/$nsPrev@|/registry/$nsNew@|" |
-          sed -r "s|@$nsPrev/|@$nsNew/|" > "$prepareFile-$curDate"
+          sed -r "s|report/$nsPrev@|report/$nsNew@|" |
+          sed -r "s|registry/$nsPrev@|/registry/$nsNew@|" |
+          sed -r "s|@$nsPrev/|@$nsNew/|" |
+          sed -r "s|@$nsPrev'|@$nsNew'|" | sed -r "s|@$nsPrev\`|@$nsNew\`|" | sed -r "s|'$nsPrev@|'$nsNew@|" > "$prepareFile-$curDate"
+        local prepared=1
+      fi
+      ;;
+    'themes')
+      if [ ${prepareFile##*.} = 'js' ] ; then #  /workspace/pm-gov-ru-ns/themes/portal/static/js/monitor.js
+        cat $prepareFile |
+          sed -r "s|report/$nsPrev@|report/$nsNew@|" |
+          sed -r "s|@$nsPrev'|@$nsNew'|" |
+          sed -r "s|@$nsPrev/'|@$nsNew/'|"> "$prepareFile-$curDate"
         local prepared=1
       fi
       ;;
     'wfviews')
       if [ ${prepareFile##*.} = 'json' ] ; then
         cat $prepareFile |
-          sed -r "s|@$nsPrev\"|@$nsNew\"|" > "$prepareFile-$curDate"
+          sed -r "s|@$nsPrev\"|@$nsNew\"|" |
+          sed -r "s|/report/public/$nsPrev@|/report/public/$nsNew@|" > "$prepareFile-$curDate"
         local prepared=1
       fi
       ;;
@@ -174,30 +188,26 @@ function changeNamespace {
         local prepared=1
       fi
       ;;
-    * ) 
-      if ! [ $quietMode ] ; then
-        if [ ${prepareFile##*.} = 'json' ] ; then
-          echo -en "${i_warn}Folder \"$1\" didn't have instruction to prepare. Use default check and replace for $prepareFile${i_end}";
-          cat $prepareFile |
-            sed -r "s|\"applications/$nsPrev/|\"applications/$nsNew/|" |
-            sed -r "s|\"namespace\"\s*:\s*\"$nsPrev\"|\"namespace\": \"$nsNew\"|" > "$prepareFile-$curDate"
+    * )
+      if [ ${prepareFile##*.} = 'json' ] ; then
+        echo -en "${i_warn}Folder \"$1\" didn't have instruction to prepare. Use default check and replace for $prepareFile${i_end}";
+        cat $prepareFile |
+          sed -r "s|\"applications/$nsPrev/|\"applications/$nsNew/|" |
+          sed -r "s|\"namespace\"\s*:\s*\"$nsPrev\"|\"namespace\": \"$nsNew\"|" > "$prepareFile-$curDate"
 #            sed -r "s|\"$nsPrev\"\s*:\s*\"|\"$nsNew\": \"|" | \
 #            sed -r "s|\"$nsPrev\"\s*:\s*\{|\"$nsNew\": \{|" | \
 #            sed -r "s|@$nsPrev\"|@$nsNew\"|" | \
 #            sed -r "s|\"$nsPrev@|\"$nsNew@|"
+      local prepared=1
+      elif [ ${prepareFile##*.} = 'js' ] ; then
+        echo -en "${i_warn}Folder \"$1\" didn't have instruction to prepare. Use default check and replace for $prepareFile${i_end}";
+        cat $prepareFile |
+          sed -r "s|@$nsPrev'/|@$nsNew'/|" | sed -r "s|@$nsPrev.|@$nsNew.|" | sed -r "s|@$nsPrev'|@$nsNew'|" > "$prepareFile-$curDate"
         local prepared=1
-        elif [ ${prepareFile##*.} = 'js' ] ; then
-          echo -en "${i_warn}Folder \"$1\" didn't have instruction to prepare. Use default check and replace for $prepareFile${i_end}";
-          cat $prepareFile |
-            sed -r "s|@$nsPrev'/|@$nsNew'/|" > "$prepareFile-$curDate"
-          local prepared=1
-        else
-          echo -en "${i_warn}Folder \"$1\" didn't have instruction to prepare and didn't recognize extension for use default check and replace for $prepareFile. Skip${i_end}";
-          echo -en "  ${i_warn}" && grep -n "$nsPrev" "$prepareFile" && echo -en "${i_end}"
-          return
-        fi
-
-
+      else
+        echo -en "${i_warn}Folder \"$1\" didn't have instruction to prepare and didn't recognize extension for use default check and replace for $prepareFile. Skip${i_end}";
+        if ! [ $quietMode ] ; then echo -en "  ${i_warn}" && grep -n "$nsPrev" "$prepareFile" && echo -en "${i_std}"; fi
+        return
       fi
       ;;
   esac
@@ -207,7 +217,7 @@ function changeNamespace {
     checkPrevNsAndRenameFile $prepareFile
   else
    echo -en "${i_warn}$prepareFile didn't have instruction to prepare. Skip${i_end}";
-   echo -en "  ${i_warn}" && grep -n "$nsPrev" "$prepareFile" && echo -en "${i_end}"
+   if ! [ $quietMode ] ; then echo -en "  ${i_warn}" && grep -n "$nsPrev" "$prepareFile" && echo -en "${i_std}"; fi
    return
   fi
 }
@@ -215,12 +225,12 @@ function changeNamespace {
 function renameNamespaceFolder {
   if [[ "$1" = "export" && "$2"="$nsPrev" ]]; then
     newFolderName="${2%/*}/$nsNew"
-    echo -en "${i_info}  ${2} export subfolder have $nsPrev. Rename to ${newFolderName}${i_end}"
+    if ! [ $quietMode ] ; then echo -en "${i_info}  ${2} export subfolder have $nsPrev. Rename to ${newFolderName}${i_end}"; fi
     mv -T "$2" "${newFolderName}"
   elif echo "${2##*/}" | grep -q "@$nsPrev"; then
     newFolderName=`echo "${2##*/}" | sed "s|@$nsPrev|@$nsNew|"`
     newFolderName="${2%/*}/$newFolderName"
-    echo -en "${i_info}  ${2} folder have $nsPrev. Rename to ${newFolderName}${i_end}"
+    if ! [ $quietMode ] ; then echo -en "${i_info}  ${2} folder have $nsPrev. Rename to ${newFolderName}${i_end}"; fi
     mv -T "$2" "${newFolderName}"
   else
     newFolderName=$2
@@ -233,19 +243,32 @@ function renameNamespaceFile {
     'data')
         local tempName=${2%@*}
         newFileName="${tempName%@*}@$nsNew@${2##*@}"
-        echo -en "${i_info}  ${2} data file have $nsPrev. Rename to ${newFolderName}${i_end}"
+        if ! [ $quietMode ] ; then echo -en "${i_info}  ${2} => ${newFileName##*/} rename because have $nsPrev in filename${i_end}";  fi
         mv "$2" "${newFileName}"
         ;;
+    'views')
+      if echo $2 | grep -Eq "/views/workflows/"; then
+        if echo "${2##*/}" | grep -q "@$nsPrev"; then
+          newFileName="${2%@*}@$nsNew.${2##*.}"
+          if ! [ $quietMode ] ; then echo -en "${i_info}  ${2} => ${newFileName##*/} rename because have $nsPrev in filename${i_end}"; fi
+          mv "$2" "$newFileName";
+        else
+          newFileName=$2
+          echo -en "${i_warn}  ${2} file in views/workflow have $nsPrev. But didn't found instruction. Skip${i_end}"
+        fi
+      fi
+                ;;
     'wfviews')
         if echo "${2##*/}" | grep -q "@$nsPrev"; then
           newFileName="${2%@*}@$nsNew.${2##*.}"
-          echo -en "${i_info}  ${2} wfviews file have $nsPrev. Rename to $newFileName${i_end}"
+          if ! [ $quietMode ] ; then echo -en "${i_info}  ${2} => ${newFileName##*/} rename because have $nsPrev in filename${i_end}"; fi
           mv "$2" "$newFileName";
         else
           newFileName=$2
           echo -en "${i_warn}  ${2} file in wfviews have $nsPrev. But didn't found instruction. Skip${i_end}"
         fi
         ;;
+
     * )
         newFileName=$2
         echo -en "${i_warn}  ${2} file have $nsPrev. But didn't found instruction. Skip${i_end}"
