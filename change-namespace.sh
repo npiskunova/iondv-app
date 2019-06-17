@@ -67,7 +67,7 @@ function changeNamespace {
   case "$1" in 
     'data')
       if [ ${prepareFile##*.} = 'zip' ] ; then
-        echo -en "  ${i_debug}skip zip: $prepareFile${i_end}"
+        if ! [ $quietMode ] ; then  echo -en "  ${i_debug}skip zip: $prepareFile${i_end}"; fi
         return
       fi
       ;;
@@ -206,7 +206,7 @@ function changeNamespace {
         local prepared=1
       else
         echo -en "${i_warn}Folder \"$1\" didn't have instruction to prepare and didn't recognize extension for use default check and replace for $prepareFile. Skip${i_end}";
-        if ! [ $quietMode ] ; then echo -en "  ${i_warn}" && grep -n "$nsPrev" "$prepareFile" && echo -en "${i_std}"; fi
+        echo -en "  ${i_warn}" && grep -n "$nsPrev" "$prepareFile" && echo -en "${i_std}";
         return
       fi
       ;;
@@ -217,7 +217,7 @@ function changeNamespace {
     checkPrevNsAndRenameFile $prepareFile
   else
    echo -en "${i_warn}$prepareFile didn't have instruction to prepare. Skip${i_end}";
-   if ! [ $quietMode ] ; then echo -en "  ${i_warn}" && grep -n "$nsPrev" "$prepareFile" && echo -en "${i_std}"; fi
+   echo -en "  ${i_warn}" && grep -n "$nsPrev" "$prepareFile" && echo -en "${i_std}";
    return
   fi
 }
