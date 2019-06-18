@@ -148,7 +148,6 @@ function f_check_mongo () {
     docker exec -it $mongoLink mongo --quiet --eval 'db.runCommand("ping").ok' > /dev/null
     if [ $? -ne 0 ]; then
       echo "Error check MongoDb docker container: $mongoLink"
-      exit
     else
       checkMongo=`curl --silent $mongodbUri | grep "MongoDB"` > /dev/null
       if [ $? -ne 0 ]; then
@@ -790,7 +789,7 @@ fi
 
 # Check
 if ! [ $skipCheck ] ; then
-  if ! [ $dockerUse ] ; then
+  if [ $buildType!="docker" ] ; then
     f_check_git
     f_check_node
     f_check_npm_dep
