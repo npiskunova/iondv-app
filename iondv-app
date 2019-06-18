@@ -9,24 +9,24 @@ if ! [ $1 ] ; then
   echo 'Install IONDV. Framework application to current dirrectory and create docker image.'
   echo
   echo 'Options:'
-  echo 'Build app method option:'
-  echo ' -t [value]             git: use git clone (default)'
+  echo 'Build app method options:'
+  echo ' -t [value]             git: use git clone (by default)'
 #  echo '                              zip: get from zip-files from github only [in construction]'
 #  echo '                              npm: get from npm [in construction]'
-  echo '                              docker:  without use specific software on host mashine, only docker image'
+  echo '                              docker:  without specific software on host mashine, only docker image'
   echo  'Universal options'
   echo '  -c [value]                  start cluster with [value] count'
-  echo '  -m [value]                  mongo uri, for example: mongodb:27017. Default localhost:27017'
-  echo '  -r                          remove app workspace folder, if they exist'
-  echo '  -i                          import data'
-  echo '  -a                          import acl (role and user)'
+  echo '  -m [value]                  mongo uri, for example: mongodb:27017. localhost:27017 - by default'
+  echo '  -r                          remove app workspace folder, if it exists'
+  echo '  -i                          data import'
+  echo '  -a                          acl (role and user) import'
   echo '  -y                          yes to all'
-  echo '  -q                          quiet mode. Show only major and warn information'
-  echo '  -l [value]                  mongodb docker name, for link with app docker container'
-  echo '                              (with option -d or docker method)'
+  echo '  -q                          quiet mode. Show only major information and warnings'
+  echo '  -l [value]                  mongodb docker name to link the app with docker container'
+  echo '                              (with -d option or docker method)'
   echo '                              also set mongo uri value to [value]:27017'
-  echo '  -p [value]                  workspace path, where will created app folder'
-  echo '  -s [value]                  full path to script, go running after install and before build app'
+  echo '  -p [value]                  workspace path, where will be created app folder'
+  echo '  -s [value]                  full path to the script, run after installing and before building the app'
   echo '  -n [value]                  new app namespace and name'
   echo '  -h                          skip checkout to version in tag. Use default (last) version'
   echo 'Options for git, zip, npm method:'
@@ -34,16 +34,16 @@ if ! [ $1 ] ; then
   echo '                              build for local deploy (git build method)'
   echo '  -k                          skip environment check'
   echo 'Options for docker method (ci):'
-  echo '  -v                          save provisional docker image as template version, for example registry:3.0.0'
-  echo '                              (for create cached version of components'
+  echo '  -v                          save provisional docker image as a template version, for example registry:3.0.0'
+  echo '                              (to create cached version of components'
   echo
   echo 'Environment:'
-  echo '  IONDVUrlGitFramework       URL for get framework, default: https://github.com/iondv/framework.git'
-  echo '                             You can also set login and password for use in private repositry, for example'
+  echo '  IONDVUrlGitFramework       URL to get framework by default is https://github.com/iondv/framework.git'
+  echo '                             You can also set login and password to use in private repositry, for example'
   echo '                             https://login:password@git.company-name.com/iondv/framework.git'
-  echo '  IONDVUrlGitModules         Base of URL for get modules, default https://github.com/iondv'
-  echo '  IONDVUrlGitApp             Base of URL for get app, default https://github.com/iondv'
-  echo '  IONDVUrlGitExtApp          Base of URL for get app extension, default https://github.com/iondv'
+  echo '  IONDVUrlGitModules         Base of URL to get modules, by default https://github.com/iondv'
+  echo '  IONDVUrlGitApp             Base of URL to get app, by default https://github.com/iondv'
+  echo '  IONDVUrlGitExtApp          Base of URL to get app extension, by default https://github.com/iondv'
 
   echo
   echo 'Example:'
@@ -84,7 +84,7 @@ function f_check_bash() {
       exit
       fi
   else
-    echo "Didn't check bash version. Need 3 or hignter"
+    echo "Bash version isn't checked. Need 3 or hignter"
   fi
 }
 
@@ -112,7 +112,7 @@ function f_check_npm_dep() {
     case "$choice" in
       y|Y ) npm install -g node-gyp
             if [ $? -ne 0 ]; then exit; fi;;
-      n|N ) echo "node-gyp is requered" exit;;
+      n|N ) echo "node-gyp is requered"; exit;;
       * )   echo "invalid"; exit;;
     esac
   fi
@@ -126,7 +126,7 @@ function f_check_npm_dep() {
     case "$choice" in
       y|Y ) npm install -g gulp
             if [ $? -ne 0 ]; then exit; fi;;
-      n|N ) echo "^gulp@4.0.0 is requered" exit;;
+      n|N ) echo "^gulp@4.0.0 is requered"; exit;;
       * )   echo "invalid"; exit;;
     esac
   fi
@@ -140,7 +140,7 @@ function f_check_npm_dep() {
     case "$choice" in
       y|Y ) npm install -g bower
             if [ $? -ne 0 ]; then exit; fi;;
-      n|N ) echo "bower is requered" exit;;
+      n|N ) echo "bower is requered"; exit;;
       * )   echo "invalid"; exit;;
     esac
   fi
@@ -436,7 +436,7 @@ function f_build_docker() {
     #TODO GET app version from package.json
     f_buld_docker_version "$imageName" "$frameworkPath/Dockerfile" "$frameworkPath/." "--check-ignore"
  else
-   echo "Docker $imageName is exist, skip building"
+   echo "Docker $imageName exists, skip building"
  fi
 }
 
@@ -499,7 +499,7 @@ function f_install_git () {
   if ! [ -d $frameworkPath ]; then
     if ! [ $quietMode ] ; then echo "Git: clone IONDV. framework"; fi
     git clone --quiet "$IONDVUrlGitFramework" "$appName"
-    if [ $? -ne 0 ]; then echo "Didn't clone $IONDVUrlGitFramework"; exit; fi
+    if [ $? -ne 0 ]; then echo "Don't clone $IONDVUrlGitFramework"; exit; fi
   else
     cd $frameworkPath
     if ! [ $quietMode ] ; then echo "Git: Stash and update IONDV. framework"; fi
@@ -519,7 +519,7 @@ function f_install_git () {
     cd "$frameworkPath/applications"
     if ! [ $quietMode ] ; then echo "Git: clone IONDV. app - $appName from $appGitLink"; fi
     git clone --quiet "$appGitLink" $appName
-    if [ $? -ne 0 ]; then echo "Didn't clone $appGitLink"; exit; fi
+    if [ $? -ne 0 ]; then echo "Don't clone $appGitLink"; exit; fi
   fi
 
 
@@ -527,7 +527,7 @@ function f_install_git () {
     git checkout "tags/$appGetVersion"
     appVer=`grep -E '\"version\"\s*:\s*\"' $frameworkPath/applications/$appName/package.json | grep -o -E '[0-9\.]+'`
     if [[ $appGetVersion != $appVer ]] ; then
-      echo "App version is different. Requred $appGetVersion, current $appVer."
+      echo "App version is different. Required is $appGetVersion, current is $appVer."
       exit
     fi
   else
@@ -557,7 +557,7 @@ function f_install_git () {
     if ! [ -d "$frameworkPath/applications/${temp%:*}" ]; then
       cd $frameworkPath/applications
       git clone --quiet "$IONDVUrlGitExtApp/${temp%:*}.git"
-      if [ $? -ne 0 ]; then echo "Didn't clone $IONDVUrlGitExtApp/${temp%:*}.git"; exit; fi
+      if [ $? -ne 0 ]; then echo "Don't clone $IONDVUrlGitExtApp/${temp%:*}.git"; exit; fi
     fi
     cd "$frameworkPath/applications/${temp%:*}"
     git stash
@@ -576,7 +576,7 @@ function f_install_git () {
     if ! [ -d "$frameworkPath/modules/${temp%:*}" ]; then
       cd $frameworkPath/modules
       git clone --quiet "$IONDVUrlGitModules/${temp%:*}.git"
-      if [ $? -ne 0 ]; then echo "Didn't clone $IONDVUrlGitModules/${temp%:*}.git"; exit; fi
+      if [ $? -ne 0 ]; then echo "Don't clone $IONDVUrlGitModules/${temp%:*}.git"; exit; fi
     fi
     cd "$frameworkPath/modules/${temp%:*}"
     git stash
@@ -593,7 +593,7 @@ function f_install_git () {
 
   cd $frameworkPath
   if [ $postInstScript ] ; then
-    if ! [ $quietMode ] ; then echo "Running postInstall script $postInstScript, before app build"; fi
+    if ! [ $quietMode ] ; then echo "Running postinstall script $postInstScript, before building the app"; fi
     $postInstScript
   fi
 
@@ -735,7 +735,7 @@ shift
 done
 
 if ! [ $appName ] ; then 
-  echo "Didn't set application name or git url"
+  echo "Application name or git url isn't set"
   exit
 fi
 
@@ -787,7 +787,7 @@ fi
 
 if [ $mongoLink ] ; then
   mongodbUri="$mongoLink:27017"
-  if ! [ $quietMode ] ; then echo "Set mongo uri to $mongodbUri"; fi
+  if ! [ $quietMode ] ; then echo "Set Mongo uri to $mongodbUri"; fi
 fi
 
 # Check
@@ -823,7 +823,7 @@ cd $installDir
 
 # Build
 if [ -z "$buildType" ]; then
-  echo "Didn't set build method. Use default: git"
+  echo "Build method isn't set. Use default: git"
   f_install_git
 else
   case "$buildType" in
