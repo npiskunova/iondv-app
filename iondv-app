@@ -110,9 +110,10 @@ function f_check_npm_dep() {
       read -p "Error check node-gyp. Install (y/n)?" choice
     fi
     case "$choice" in
-      y|Y ) npm install -g node-gyp;;
+      y|Y ) npm install -g node-gyp
+            if [ $? -ne 0 ]; then exit; fi;;
       n|N ) echo "node-gyp is requered" exit;;
-      * ) echo "invalid"; exit;;
+      * )   echo "invalid"; exit;;
     esac
   fi
   echo $npmPackCheck | grep 'gulp@4.'  > /dev/null
@@ -123,9 +124,10 @@ function f_check_npm_dep() {
       read -p "Error check ^gulp@4.0.0. Install (y/n)?" choice
     fi
     case "$choice" in
-      y|Y ) npm install -g gulp;;
+      y|Y ) npm install -g gulp
+            if [ $? -ne 0 ]; then exit; fi;;
       n|N ) echo "^gulp@4.0.0 is requered" exit;;
-      * ) echo "invalid"; exit;;
+      * )   echo "invalid"; exit;;
     esac
   fi
   echo $npmPackCheck | grep 'bower'  > /dev/null
@@ -136,9 +138,10 @@ function f_check_npm_dep() {
       read -p "Error check bower. Install (y/n)?" choice
     fi
     case "$choice" in
-      y|Y ) npm install -g bower;;
+      y|Y ) npm install -g bower
+            if [ $? -ne 0 ]; then exit; fi;;
       n|N ) echo "bower is requered" exit;;
-      * ) echo "invalid"; exit;;
+      * )   echo "invalid"; exit;;
     esac
   fi
 }
