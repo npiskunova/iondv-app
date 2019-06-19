@@ -251,6 +251,9 @@ f_check_readiness_docker() {
 function f_buld_docker_version() {
   if [ -z $4 ] && f_check_readiness_docker "$1" ; then echo "Docker $1 is exist, skip building"; return;
   else
+# TODO Didn't cache param. Check?
+# --rm --compress --no-cache=true --pull --force-rm
+# RM .git?
     docker image build -t "$1" -f "$2" "$3"
   fi
   # TODO GET VERSION AND COPY AND SET IN NEW ONE DOCKER - SMALLEST AND VERIFED VERSION
