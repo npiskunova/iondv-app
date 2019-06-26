@@ -172,7 +172,9 @@ function changeNamespace {
           sed -r "s|report/$nsPrev@|report/$nsNew@|" |
           sed -r "s|registry/$nsPrev@|/registry/$nsNew@|" |
           sed -r "s|@$nsPrev/|@$nsNew/|" |
-          sed -r "s|@$nsPrev'|@$nsNew'|" | sed -r "s|@$nsPrev\`|@$nsNew\`|" | sed -r "s|'$nsPrev@|'$nsNew@|" > "$prepareFile-$curDate"
+          sed -r "s|@$nsPrev'|@$nsNew'|" |
+          sed -r "s|@$nsPrev\`|@$nsNew\`|" |
+          sed -r "s|'$nsPrev@|'$nsNew@|" > "$prepareFile-$curDate"
         local prepared=1
       fi
       ;;
@@ -211,7 +213,9 @@ function changeNamespace {
       elif [ ${prepareFile##*.} = 'js' ] ; then
         echo -en "${i_warn}Folder \"$1\" didn't have instruction to prepare. Use default check and replace for $prepareFile${i_end}";
         cat $prepareFile |
-          sed -r "s|@$nsPrev'/|@$nsNew'/|" | sed -r "s|@$nsPrev.|@$nsNew.|" | sed -r "s|@$nsPrev'|@$nsNew'|" > "$prepareFile-$curDate"
+          sed -r "s|(['\"])([a-zA-Z0-9_]+)@$nsPrev(['\"])|\1\2@$nsNew\3|" |  # 'eventControl@test-pm'
+          sed -r "s|(['\"])([a-zA-Z0-9_]+)@$nsPrev([\.a-zA-Z0-9_]+)(['\"])|\1\2@$nsNew\3\4|" |   # 'project@test-pm.inaccepted' 'indicatorBasic@test-pm.'
+          sed -r "s|@$nsPrev'|@$nsNew'|" > "$prepareFile-$curDate"
         local prepared=1
       else
         echo -en "${i_warn}Folder \"$1\" didn't have instruction to prepare and didn't recognize extension for use default check and replace for $prepareFile. Skip${i_end}";
@@ -346,7 +350,7 @@ if [ -f "$appPath/deploy.json" ] ; then
     sed -r "s|\"$nsPrev\"\s*:\s*\{|\"$nsNew\": \{|" |                              # "test-pm": {
     sed -r "s|\"$nsPrev\"\s*:\s*\"|\"$nsNew\": \"|" |                              # "test-pm": "Project management"
     sed -r "s|\"([a-zA-Z0-9_]+)@$nsPrev([\.a-zA-Z0-9_]+)\"|\"\1@$nsNew\2\"|" |   # "resultEvent@test-pm.work"
-    sed -r "s|\"registry/$nsPrev@([\.a-zA-Z0-9_]+)/|registry/$nsNew@\1/|" |       # "registry/test-pm@myprojectevent.all/new/
+    sed -r "s|\"registry/$nsPrev@([\.a-zA-Z0-9_]+)/|\"registry/$nsNew@\1/|" |       # "registry/test-pm@myprojectevent.all/new/
     sed -r "s|/([a-zA-Z0-9_]+)/([a-zA-Z0-9_]+)@$nsPrev\"|/\1/\2@$nsNew\"|"  |    # /basicObjs/event@test-pm"
         sed -r "s|\"([a-zA-Z0-9_]+)@$nsPrev\"|\"\1@$nsNew\"|g" |                  # "indicatorValueBasic@test-pm"
     sed -r "s|\"$nsPrev@([\.a-zA-Z0-9_]+)\"|\"$nsNew@\1\"|g" |                    # "test-pm@projectmanagement"

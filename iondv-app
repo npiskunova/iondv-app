@@ -189,7 +189,7 @@ function f_get_metadep_ver() {
     local metadepAll=`sed -n -r '/"ionMetaDependencies":\s+\{/,/\}/{ /"ionMetaDependencies":\s+\{/d; /}/d; p; }' $appPackagePath`
     if ! [ $quietMode ] ; then echo "Addition apps list: $metadepAll"; fi
     if ! [ ${#metadepAll[@]} = 0 ] ; then
-      metadepPairList=`echo $metadepAll | tr -d [:space:] | tr -d '"' | tr ',' '\n'`
+      metaDepPairList=`echo $metadepAll | tr -d [:space:] | tr -d '"' | tr ',' '\n'`
     fi
   fi
 }
@@ -290,12 +290,8 @@ function f_create_setup_ini() {
 function f_create_init_sh() {
   echo "node bin/import --src ./applications/$appName --ns $appName"                          > "$frameworkPath/init.sh"
   echo "node bin/setup $appName --reset"                                                      >> "$frameworkPath/init.sh"
-  for i in ${applist[@]}
-  do
-    IFS=':' tmp=($i)
-    if ! [ -d "$frameworkPath/applications/${tmp[0]}" ]; then
-      echo "node bin/setup ${tmp[0]}"                                                         >> "$frameworkPath/init.sh"
-    fi
+  for temp in ${metaDepPairList[@]}; do
+    echo "node bin/setup ${temp%:*}"                                                          >> "$frameworkPath/init.sh"
   done
   if [ $importData ] ; then echo "node bin/import-data --src ./applications/$appName/data --ns $appName" >> "$frameworkPath/init.sh"; fi
   echo "node bin/adduser --name demo --pwd ion-demo"                                          >> "$frameworkPath/init.sh"
@@ -348,7 +344,7 @@ function f_build_docker() {
 
   # ionMetaDependencies
   f_get_metadep_ver $frameworkPath/package-$appName.json
-  for temp in ${metadepPairList[@]}; do
+  for temp in ${metaDepPairList[@]}; do
     f_git_set_dockerfile $temp "/var/www/applications" $IONDVUrlGitExtApp
     if [ $dockerVersionSave ]; then f_buld_docker_version "iondv-git-$temp" "$frameworkPath/Dockerfile-git-${temp%:*}" "$frameworkPath/."; fi
   done
@@ -392,7 +388,7 @@ function f_build_docker() {
     echo "RUN npm install"                                                                    >> "$frameworkPath/Dockerfile" # TODO NPM install gulp
     echo "WORKDIR /var/www/applications"                                                      >> "$frameworkPath/Dockerfile"
     echo "COPY --from=iondv-git-$appName:$appGetVersion /var/www/applications ."              >> "$frameworkPath/Dockerfile"
-    for temp in ${metadepPairList[@]}; do
+    for temp in ${metaDepPairList[@]}; do
       echo "COPY --from=iondv-git-$temp /var/www/applications ."                              >> "$frameworkPath/Dockerfile"
     done
     echo "WORKDIR /var/www/modules"                                                           >> "$frameworkPath/Dockerfile"
@@ -555,7 +551,7 @@ function f_install_git () {
 
   # ionMetaDependencies
   f_get_metadep_ver $frameworkPath/applications/$appName/package.json
-  for temp in ${metadepPairList[@]}; do
+  for temp in ${metaDepPairList[@]}; do
     if ! [ $quietMode ] ; then echo "Inslall ext-app: ${temp%:*}"; fi
     if ! [ -d "$frameworkPath/applications/${temp%:*}" ]; then
       cd $frameworkPath/applications
