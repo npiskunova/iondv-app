@@ -52,10 +52,10 @@ iondv-app [OPTION]... IONDV_APP_NAME|IONDV_APP_NAME@VERSION|GIT_URL'
   IONDVUrlGitExtApp          Base of URL to get app extension, by default https://github.com/iondv'
 ```
 
-Example. Install and start app `khv-ticket-discount` with link docker mongodb
+Example. Install and start app `nutrition-tickets` with link docker mongodb
 
 ```
-`./iondv-app --method docker -l mongodb khs-ticket-discount@1.0.1'
+`./iondv-app -t docker -l mongodb nutrition-tickets'
 ```
 
 Example: Install app with link to git and mongo uri'
